@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Geist+Mono:wght@400;500&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    font-family: 'Geist', -apple-system, system-ui, sans-serif;
+    color: #1a1f2e;
+    background:
+      radial-gradient(ellipse at 15% 0%, #fdf7ea 0%, transparent 50%),
+      radial-gradient(ellipse at 100% 100%, #e8dfc8 0%, transparent 55%),
+      #f4efe6;
+    position: relative;
+  }
+  .serif { font-family: 'Bricolage Grotesque', serif; font-optical-sizing: auto; letter-spacing: -0.03em; }
+  .mono { font-family: 'Geist Mono', monospace; }
+  .wrap {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    height: 100%;
+    align-items: center;
+  }
+  .left {
+    padding: 70px 20px 70px 80px;
+    display: flex;
+    flex-direction: column;
+    gap: 26px;
+  }
+  .eyebrow {
+    font-size: 16px;
+    letter-spacing: 0.2em;
+    color: #8a8578;
+    font-weight: 500;
+  }
+  h1 {
+    font-size: 120px;
+    font-weight: 800;
+    line-height: 0.9;
+    letter-spacing: -0.04em;
+  }
+  h1 .climb { color: #2a8a5f; display: inline-block; transform: translateY(-8px); margin-left: 8px; }
+  h1 .slide { color: #e8583e; display: inline-block; transform: translateY(8px); margin-left: 8px; }
+  .sub {
+    font-size: 22px;
+    line-height: 1.4;
+    color: #384056;
+    max-width: 480px;
+  }
+  .chips {
+    display: flex;
+    gap: 10px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+  }
+  .chip {
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 0.12em;
+    font-weight: 500;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: white;
+    color: #1a1f2e;
+    border: 1px solid rgba(26,31,46,0.12);
+    box-shadow: 0 2px 0 rgba(26,31,46,0.06);
+  }
+  .chip.dark { background: #1a1f2e; color: #f4efe6; border-color: #1a1f2e; }
+
+  .right {
+    position: relative;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .board {
+    position: relative;
+    width: 440px; height: 440px;
+    background: #1a1f2e;
+    border-radius: 28px;
+    padding: 16px;
+    box-shadow:
+      0 40px 80px -20px rgba(26,31,46,0.5),
+      0 4px 0 rgba(26,31,46,0.15);
+    transform: rotate(6deg);
+  }
+  .grid {
+    position: relative;
+    width: 100%; height: 100%;
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    grid-template-rows: repeat(6, 1fr);
+    gap: 2px;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .grid .sq {
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+    color: rgba(26,31,46,0.55);
+    padding: 4px 5px;
+  }
+  .grid .sq.light { background: linear-gradient(135deg, #fbf5e8, #f4ecd8); }
+  .grid .sq.dark { background: linear-gradient(135deg, #ece2ca, #ddd0b0); }
+  /* overlay art */
+  .ladder {
+    position: absolute;
+    width: 50px; height: 220px;
+    left: 78px; bottom: 30px;
+    background:
+      linear-gradient(90deg, #e8b23e 0 10px, transparent 10px calc(100% - 10px), #e8b23e calc(100% - 10px) 100%),
+      repeating-linear-gradient(0deg, transparent 0 24px, rgba(93,58,6,0.15) 24px 26px, #e8b23e 26px 38px, rgba(93,58,6,0.2) 38px 40px);
+    border-radius: 6px;
+    transform: rotate(18deg);
+    box-shadow: 0 8px 16px rgba(0,0,0,0.25);
+  }
+  .chute {
+    position: absolute;
+    width: 54px; height: 240px;
+    right: 60px; top: 24px;
+    background: linear-gradient(90deg, #b9361f 0 8px, #ff7a3d 12px 80%, #ff9f6b 80% 100%);
+    border-radius: 40px;
+    transform: rotate(-22deg);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  }
+  .chute::before {
+    content: ''; position: absolute; inset: 8px 10px;
+    border-radius: 30px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.35), transparent 60%);
+  }
+  .token {
+    position: absolute;
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    background: #e8b23e;
+    border: 4px solid white;
+    box-shadow:
+      0 8px 20px rgba(0,0,0,0.35),
+      inset 0 3px 6px rgba(255,255,255,0.4),
+      inset 0 -3px 6px rgba(0,0,0,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Geist', sans-serif;
+    font-weight: 700;
+    font-size: 26px;
+    color: white;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  }
+  .token.t1 { left: 210px; top: 100px; background: #e8583e; transform: rotate(-6deg); }
+  .token.t2 { left: 140px; top: 300px; background: #2a8a5f; transform: rotate(4deg); }
+  .token.t3 { right: 60px; bottom: 110px; background: #5b6cff; transform: rotate(-10deg); }
+
+  .dice {
+    position: absolute;
+    width: 120px; height: 120px;
+    background:
+      radial-gradient(circle at 30% 25%, rgba(255,255,255,0.95), transparent 45%),
+      linear-gradient(145deg, #fff 0%, #f4ecd8 55%, #d9ccac 100%);
+    border-radius: 22px;
+    right: -40px;
+    bottom: -40px;
+    transform: rotate(-14deg);
+    box-shadow:
+      0 24px 40px -10px rgba(0,0,0,0.4),
+      inset 0 0 0 1px rgba(255,255,255,0.9),
+      inset 0 -6px 14px rgba(120,95,55,0.22),
+      inset 0 3px 5px rgba(255,255,255,0.9);
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    padding: 18px;
+    place-items: center;
+  }
+  .dice .pip {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #54607a, #1a1f2e 60%, #0c0f18);
+    box-shadow:
+      inset 0 -2px 3px rgba(255,255,255,0.15),
+      inset 0 2px 3px rgba(0,0,0,0.5);
+  }
+  .dice .pip:nth-child(1) { grid-row: 1; grid-column: 1; }
+  .dice .pip:nth-child(2) { grid-row: 1; grid-column: 3; }
+  .dice .pip:nth-child(3) { grid-row: 2; grid-column: 2; }
+  .dice .pip:nth-child(4) { grid-row: 3; grid-column: 1; }
+  .dice .pip:nth-child(5) { grid-row: 3; grid-column: 3; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="left">
+    <div class="eyebrow mono">CLIMB & SLIDE · FREE ONLINE GAME</div>
+    <h1 class="serif">Climb<span class="climb">↑</span><br/>& Slide<span class="slide">↓</span></h1>
+    <div class="sub">A modern take on a classic dice race. Roll, ride ladders, dodge slides. First to 100 wins.</div>
+    <div class="chips">
+      <div class="chip dark">PLAY FREE</div>
+      <div class="chip">2–5 PLAYERS</div>
+      <div class="chip">VS ROBOT AI</div>
+    </div>
+  </div>
+  <div class="right">
+    <div class="board">
+      <div class="grid">
+        <!-- 6x6 decorative checker -->
+      </div>
+      <div class="ladder"></div>
+      <div class="chute"></div>
+      <div class="token t1">1</div>
+      <div class="token t2">2</div>
+      <div class="token t3">3</div>
+      <div class="dice">
+        <span class="pip"></span>
+        <span class="pip"></span>
+        <span class="pip"></span>
+        <span class="pip"></span>
+        <span class="pip"></span>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  // Fill checker grid
+  const g = document.querySelector('.grid');
+  for (let r = 0; r < 6; r++) {
+    for (let c = 0; c < 6; c++) {
+      const el = document.createElement('div');
+      el.className = 'sq ' + ((r + c) % 2 === 0 ? 'dark' : 'light');
+      el.textContent = (r * 6 + c + 1);
+      g.appendChild(el);
+    }
+  }
+</script>
+</body>
+</html>
