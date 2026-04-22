@@ -1,0 +1,3127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Climb & Slide — a modern take on a classic dice race</title>
+<meta name="description" content="Climb & Slide is a free online dice board game. Roll, ride ladders, dodge slides. Play solo vs BLIP the robot or Pass & Play with up to 5 friends." />
+<meta name="theme-color" content="#f4efe6" />
+<meta property="og:title" content="Climb & Slide" />
+<meta property="og:description" content="A modern take on a classic dice race. Free to play." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://YOUR-USERNAME.github.io/climb-and-slide/" />
+<meta property="og:image" content="https://YOUR-USERNAME.github.io/climb-and-slide/og.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231a1f2e'/%3E%3Ctext x='50%25' y='55%25' text-anchor='middle' font-family='system-ui' font-size='36' font-weight='700' fill='%23e8b23e'%3E%E2%86%91%3C/text%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Geist+Mono:wght@400;500&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f4efe6;
+    --bg-2: #eae3d4;
+    --ink: #1a1f2e;
+    --ink-2: #384056;
+    --mute: #8a8578;
+    --line: #1a1f2e;
+    --board-bg: #1a1f2e;
+    --board-light: #f7f1e4;
+    --board-dark: #2a3144;
+    --accent: #e8583e;
+    --accent-2: #2a8a5f;
+    --accent-3: #e8b23e;
+    --accent-4: #5b6cff;
+    --p1: #e8583e;
+    --p2: #2a8a5f;
+    --p3: #e8b23e;
+    --p4: #5b6cff;
+    --p5: #a855a0;
+    --robot: #2a3144;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    min-height: 100%;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Geist', -apple-system, system-ui, sans-serif;
+  }
+  body {
+    background:
+      radial-gradient(ellipse at 20% 0%, #fdf7ea 0%, transparent 50%),
+      radial-gradient(ellipse at 100% 100%, #e8dfc8 0%, transparent 55%),
+      var(--bg);
+  }
+  #root { height: 100%; }
+  button { font-family: inherit; border: none; cursor: pointer; background: none; color: inherit; }
+  .mono { font-family: 'Geist Mono', monospace; }
+  .serif { font-family: 'Bricolage Grotesque', serif; font-optical-sizing: auto; letter-spacing: -0.02em; }
+</style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" data-presets="react">
+
+// === board.jsx ===
+// Board data + rendering
+
+// Chutes (snakes): start (high) -> end (low)  with color palette per snake
+// Ladders: start (low) -> end (high)  with color palette per ladder
+const CHUTES_LIST = [
+  { from: 98, to: 78, color: '#1ac0c6' },  // turquoise
+  { from: 95, to: 75, color: '#ff6b9d' },  // hot pink
+  { from: 93, to: 73, color: '#ffc93d' },  // sunshine yellow
+  { from: 87, to: 24, color: '#ff7a3d' },  // coral orange (the big one)
+  { from: 64, to: 60, color: '#7ed957' },  // lime green
+  { from: 62, to: 19, color: '#3da0ff' },  // sky blue
+  { from: 56, to: 53, color: '#c77dff' },  // lavender
+  { from: 49, to: 11, color: '#00c2a8' },  // teal
+  { from: 47, to: 26, color: '#ff4d6d' },  // watermelon
+  { from: 16, to: 6,  color: '#f7a824' },  // mango
+];
+const CHUTES = Object.fromEntries(CHUTES_LIST.map(c => [c.from, c.to]));
+
+const LADDERS_LIST = [
+  { from: 4,  to: 14, color: '#e8b23e' },  // gold
+  { from: 9,  to: 31, color: '#e8583e' },  // red
+  { from: 20, to: 38, color: '#4a9e5c' },  // green
+  { from: 28, to: 84, color: '#3a7ac4' },  // blue
+  { from: 40, to: 59, color: '#c44a78' },  // pink
+  { from: 51, to: 67, color: '#8f5ac9' },  // purple
+  { from: 63, to: 81, color: '#e88c3e' },  // orange
+  { from: 71, to: 91, color: '#2f8f82' },  // teal
+];
+const LADDERS = Object.fromEntries(LADDERS_LIST.map(l => [l.from, l.to]));
+
+// convert 1..100 to (row, col) in boustrophedon, row 0 = bottom
+function squareToRC(sq) {
+  const row = Math.floor((sq - 1) / 10);
+  const inRow = (sq - 1) % 10;
+  const col = row % 2 === 0 ? inRow : 9 - inRow;
+  return { row, col };
+}
+
+// Returns {x,y} center in % (0..100) with row 0 at bottom
+function squareToPct(sq) {
+  const { row, col } = squareToRC(sq);
+  const x = (col + 0.5) * 10;
+  const y = 100 - (row + 0.5) * 10;
+  return { x, y };
+}
+
+function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, tweaks = {}, phase = 'waiting' }) {
+  const showHintArrows = tweaks.showHintArrows !== false;
+  const showGlidePath = tweaks.showGlidePath !== false;
+  const boardScale = tweaks.boardScale ?? 1;
+  const boardBgMode = tweaks.boardBgMode ?? 'dark';
+  const themeVars = boardBgMode === 'light'
+    ? { '--board-bg': '#e6dbbd' }
+    : boardBgMode === 'cream'
+    ? { '--board-bg': '#f4ecd8' }
+    : { '--board-bg': '#1a1f2e' };
+  const squares = [];
+  for (let row = 9; row >= 0; row--) {
+    const nums = [];
+    for (let c = 0; c < 10; c++) {
+      const col = row % 2 === 0 ? c : 9 - c;
+      nums.push(row * 10 + col + 1);
+    }
+    squares.push(nums);
+  }
+
+  return (
+    <div className="board-wrap" style={{ ...themeVars, transform: `scale(${boardScale})`, transformOrigin: 'center top' }}>
+      <div className="board">
+        {/* checker squares */}
+        <div className="board-grid">
+          {squares.map((rowNums, rIdx) => rowNums.map((n, cIdx) => {
+            const isDark = (rIdx + cIdx) % 2 === 0;
+            const isStart = n === 1;
+            const isEnd = n === 100;
+            const isChute = n in CHUTES;
+            const isLadder = n in LADDERS;
+            const isHighlight = highlightedSquare === n;
+            return (
+              <div
+                key={n}
+                className={`sq ${isDark ? 'dark' : 'light'} ${isHighlight ? 'hl' : ''}`}
+                style={{ gridRow: rIdx + 1, gridColumn: cIdx + 1 }}
+              >
+                <span className="sq-num mono">{n}</span>
+                {isStart && <span className="sq-tag">START</span>}
+                {isEnd && <span className="sq-tag gold">FINISH</span>}
+                {isChute && showHintArrows && <span className="sq-dot chute" title={`Chute to ${CHUTES[n]}`}>▾</span>}
+                {isLadder && showHintArrows && <span className="sq-dot ladder" title={`Ladder to ${LADDERS[n]}`}>▴</span>}
+              </div>
+            );
+          }))}
+        </div>
+
+        {/* SVG overlay for chutes and ladders - 3D */}
+        <svg className="board-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <defs>
+            <filter id="castShadowSoft" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="1.8"/>
+            </filter>
+            <filter id="castShadowHeavy" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="2.4"/>
+            </filter>
+          </defs>
+
+          {/* ======== LADDERS (per-item colored wood) ======== */}
+          {LADDERS_LIST.map(({ from, to, color }) => {
+            const a = squareToPct(+from);
+            const b = squareToPct(+to);
+            const dx = b.x - a.x, dy = b.y - a.y;
+            const len = Math.hypot(dx, dy);
+            const ang = Math.atan2(dy, dx) * 180 / Math.PI;
+            const w = 3.8;
+            const numRungs = Math.max(3, Math.floor(len / 2.3));
+            const shade = (hex, amt) => {
+              const n = parseInt(hex.slice(1), 16);
+              const r = Math.max(0, Math.min(255, ((n >> 16) & 255) + amt));
+              const g = Math.max(0, Math.min(255, ((n >> 8) & 255) + amt));
+              const bl = Math.max(0, Math.min(255, (n & 255) + amt));
+              return `rgb(${r|0},${g|0},${bl|0})`;
+            };
+            const rLight = shade(color, 70);
+            const rMid = color;
+            const rDark = shade(color, -45);
+            const rDarker = shade(color, -85);
+            const uid = `lad-${from}`;
+            return (
+              <g key={'l' + from} transform={`translate(${a.x} ${a.y}) rotate(${ang})`}>
+                <defs>
+                  <linearGradient id={`${uid}-rail`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={rLight}/>
+                    <stop offset="50%" stopColor={rMid}/>
+                    <stop offset="100%" stopColor={rDark}/>
+                  </linearGradient>
+                  <linearGradient id={`${uid}-rung`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={rLight}/>
+                    <stop offset="50%" stopColor={rMid}/>
+                    <stop offset="100%" stopColor={rDarker}/>
+                  </linearGradient>
+                </defs>
+                {/* cast shadow */}
+                <g transform="translate(0.9 1.5)" opacity="0.4">
+                  <rect x="-1" y={-w/2 - 0.2} width={len + 2} height="0.9" fill="#000" filter="url(#castShadowSoft)"/>
+                  <rect x="-1" y={w/2 - 0.7} width={len + 2} height="0.9" fill="#000" filter="url(#castShadowSoft)"/>
+                </g>
+                {/* back-face (dark side) rails for 3D depth */}
+                <rect x="-0.9" y={-w/2 + 0.1} width={len + 1.8} height="1.1" fill={rDarker} rx="0.3"/>
+                <rect x="-0.9" y={w/2 - 1.2} width={len + 1.8} height="1.1" fill={rDarker} rx="0.3"/>
+                {/* front face rails */}
+                <rect x="-0.9" y={-w/2 - 0.2} width={len + 1.8} height="1.0" fill={`url(#${uid}-rail)`} rx="0.35" stroke={rDarker} strokeWidth="0.1"/>
+                <rect x="-0.9" y={w/2 - 0.8} width={len + 1.8} height="1.0" fill={`url(#${uid}-rail)`} rx="0.35" stroke={rDarker} strokeWidth="0.1"/>
+                {/* top highlight along each rail */}
+                <line x1="-0.5" y1={-w/2 + 0.0} x2={len + 0.5} y2={-w/2 + 0.0} stroke="white" strokeWidth="0.2" opacity="0.85" strokeLinecap="round"/>
+                <line x1="-0.5" y1={w/2 - 0.6} x2={len + 0.5} y2={w/2 - 0.6} stroke="white" strokeWidth="0.2" opacity="0.85" strokeLinecap="round"/>
+                {/* rungs with depth */}
+                {Array.from({ length: numRungs }).map((_, i) => {
+                  const t = (i + 0.5) / numRungs;
+                  const cx = t * len;
+                  return (
+                    <g key={'rs' + i}>
+                      {/* rung back/underside */}
+                      <rect x={cx - 0.42} y={-w/2 + 0.5} width="0.92" height={w - 0.2} fill={rDarker}/>
+                      {/* rung front */}
+                      <rect x={cx - 0.45} y={-w/2 + 0.25} width="0.9" height={w - 0.4} fill={`url(#${uid}-rung)`} rx="0.2" stroke={rDarker} strokeWidth="0.08"/>
+                      {/* sheen */}
+                      <line x1={cx - 0.35} y1={-w/2 + 0.4} x2={cx - 0.35} y2={w/2 - 0.3} stroke="white" strokeWidth="0.12" opacity="0.7"/>
+                    </g>
+                  );
+                })}
+                {/* end caps bolts */}
+                {[[-0.3, -w/2 + 0.3], [len + 0.3, -w/2 + 0.3], [-0.3, w/2 - 0.3], [len + 0.3, w/2 - 0.3]].map(([bx, by], i) => (
+                  <g key={'b' + i}>
+                    <circle cx={bx} cy={by} r="0.4" fill={rLight}/>
+                    <circle cx={bx - 0.1} cy={by - 0.1} r="0.15" fill="white" opacity="0.8"/>
+                    <circle cx={bx} cy={by} r="0.18" fill={rDarker}/>
+                  </g>
+                ))}
+              </g>
+            );
+          })}
+
+          {/* ======== CHUTES as PLAYGROUND SLIDES (open curved slides) ======== */}
+          {CHUTES_LIST.map(({ from, to, color }) => {
+            const a = squareToPct(+from);  // TOP of slide (high square)
+            const b = squareToPct(+to);    // BOTTOM exit (low square)
+            const dx = b.x - a.x, dy = b.y - a.y;
+            const len = Math.hypot(dx, dy);
+            const nx = -dy / len, ny = dx / len;
+            // S-curve via two control points
+            const bulge1 = Math.min(7, len * 0.25);
+            const bulge2 = Math.min(7, len * 0.25);
+            const c1x = a.x + dx * 0.33 + nx * bulge1;
+            const c1y = a.y + dy * 0.33 + ny * bulge1;
+            const c2x = a.x + dx * 0.66 - nx * bulge2;
+            const c2y = a.y + dy * 0.66 - ny * bulge2;
+
+            const shade = (hex, amt) => {
+              const n = parseInt(hex.slice(1), 16);
+              const r = Math.max(0, Math.min(255, ((n >> 16) & 255) + amt));
+              const g = Math.max(0, Math.min(255, ((n >> 8) & 255) + amt));
+              const bl = Math.max(0, Math.min(255, (n & 255) + amt));
+              return `rgb(${r|0},${g|0},${bl|0})`;
+            };
+            const cLight = shade(color, 70);
+            const cMid = color;
+            const cDark = shade(color, -50);
+            const cDarker = shade(color, -90);
+            const uid = `sl-${from}`;
+
+            // slide width constant along length (open slide)
+            const wSlide = 3.2;
+
+            // Sample cubic Bezier
+            const sample = (t) => {
+              const mt = 1 - t;
+              return {
+                x: mt*mt*mt*a.x + 3*mt*mt*t*c1x + 3*mt*t*t*c2x + t*t*t*b.x,
+                y: mt*mt*mt*a.y + 3*mt*mt*t*c1y + 3*mt*t*t*c2y + t*t*t*b.y,
+                tx: 3*mt*mt*(c1x-a.x) + 6*mt*t*(c2x-c1x) + 3*t*t*(b.x-c2x),
+                ty: 3*mt*mt*(c1y-a.y) + 6*mt*t*(c2y-c1y) + 3*t*t*(b.y-c2y),
+              };
+            };
+
+            const steps = 50;
+            const centerline = [];
+            for (let i = 0; i <= steps; i++) {
+              const t = i / steps;
+              centerline.push({ t, ...sample(t) });
+            }
+
+            // width grows slightly at exit (flare)
+            const widthAt = (t) => wSlide * (1 + t * 0.15);
+
+            // Build polygon for the slide surface (bed)
+            const top = [], bot = [];
+            centerline.forEach(({ t, x, y, tx, ty }) => {
+              const L = Math.hypot(tx, ty) || 1;
+              const pnx = -ty / L, pny = tx / L;
+              const w2 = widthAt(t) / 2;
+              top.push([x + pnx * w2, y + pny * w2]);
+              bot.push([x - pnx * w2, y - pny * w2]);
+            });
+            const bedPoints = [...top, ...bot.reverse()].map(p => `${p[0]},${p[1]}`).join(' ');
+
+            // Side-rail paths (open slide walls): traced along each edge with some offset,
+            // with a raised rim gradient for 3D
+            const rail1 = top.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0]} ${p[1]}`).join(' ');
+            const rail2 = bot.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0]} ${p[1]}`).join(' ');
+
+            // Entry ladder top marker (small platform)
+            const entry = sample(0);
+            const entryAng = Math.atan2(entry.ty, entry.tx) * 180 / Math.PI;
+            const exit_ = sample(1);
+            const exitAng = Math.atan2(exit_.ty, exit_.tx) * 180 / Math.PI;
+
+            return (
+              <g key={'c' + from}>
+                <defs>
+                  {/* Slide surface gradient — bright light center, darker edges for concave feel */}
+                  <linearGradient id={`${uid}-bed`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={cDark}/>
+                    <stop offset="50%" stopColor={cLight}/>
+                    <stop offset="100%" stopColor={cDark}/>
+                  </linearGradient>
+                  {/* Rail gradient — bright top, dark underside */}
+                  <linearGradient id={`${uid}-rail`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={cLight}/>
+                    <stop offset="100%" stopColor={cDarker}/>
+                  </linearGradient>
+                </defs>
+
+                {/* ==== dramatic multi-layer cast shadow (big blur, offset down-right) ==== */}
+                <g opacity="0.4" transform="translate(2.2 3.0)" filter="url(#castShadowHeavy)">
+                  <polygon points={bedPoints} fill="#000"/>
+                </g>
+                <g opacity="0.3" transform="translate(1.4 2.0)" filter="url(#castShadowSoft)">
+                  <polygon points={bedPoints} fill="#000"/>
+                </g>
+
+                {/* ==== DEEP undercarriage stack — makes slide clearly float above board ==== */}
+                {/* bottom-most dark layer */}
+                <polygon
+                  points={top.concat(bot.slice().reverse()).map(p => `${p[0] + 0.9},${p[1] + 1.4}`).join(' ')}
+                  fill={cDarker} opacity="0.9"
+                />
+                {/* mid layer */}
+                <polygon
+                  points={top.concat(bot.slice().reverse()).map(p => `${p[0] + 0.55},${p[1] + 0.9}`).join(' ')}
+                  fill={cDarker}
+                />
+                {/* top of undercarriage (darker rim right before bed) */}
+                <polygon
+                  points={top.concat(bot.slice().reverse()).map(p => `${p[0] + 0.25},${p[1] + 0.45}`).join(' ')}
+                  fill={cDark}
+                />
+
+                {/* slide bed */}
+                <polygon points={bedPoints} fill={`url(#${uid}-bed)`} stroke={cDarker} strokeWidth="0.15"/>
+
+                {/* cross-ridges along slide for texture */}
+                {centerline.filter((_, i) => i > 2 && i < steps - 2 && i % 3 === 0).map(({ x, y, tx, ty, t }, i) => {
+                  const L = Math.hypot(tx, ty) || 1;
+                  const pnx = -ty / L, pny = tx / L;
+                  const w2 = widthAt(t) / 2 * 0.92;
+                  return (
+                    <line key={'r' + i}
+                      x1={x + pnx * w2} y1={y + pny * w2}
+                      x2={x - pnx * w2} y2={y - pny * w2}
+                      stroke={cDarker} strokeWidth="0.12" opacity="0.4"
+                    />
+                  );
+                })}
+
+                {/* center glide highlight down the slide */}
+                {showGlidePath && (
+                <polyline
+                  points={centerline.map(({ x, y, tx, ty, t }) => {
+                    const L = Math.hypot(tx, ty) || 1;
+                    const pnx = -ty / L, pny = tx / L;
+                    const w2 = widthAt(t) / 2 * 0.15;
+                    return `${x + pnx * w2 * 0.2},${y + pny * w2 * 0.2}`;
+                  }).join(' ')}
+                  fill="none" stroke="white" strokeWidth="0.7" opacity="0.45" strokeLinecap="round"
+                />
+                )}
+
+                {/* ==== SIDE RAILS (raised walls) — key playground-slide feature ==== */}
+                {/* rail 1 back shadow */}
+                <path d={rail1} fill="none" stroke={cDarker} strokeWidth="0.9" strokeLinecap="round" transform="translate(0.15 0.35)"/>
+                <path d={rail2} fill="none" stroke={cDarker} strokeWidth="0.9" strokeLinecap="round" transform="translate(0.15 0.35)"/>
+                {/* rail main body */}
+                <path d={rail1} fill="none" stroke={`url(#${uid}-rail)`} strokeWidth="0.65" strokeLinecap="round"/>
+                <path d={rail2} fill="none" stroke={`url(#${uid}-rail)`} strokeWidth="0.65" strokeLinecap="round"/>
+                {/* rail top highlight */}
+                <path d={rail1} fill="none" stroke="white" strokeWidth="0.2" strokeLinecap="round" opacity="0.8"/>
+                <path d={rail2} fill="none" stroke="white" strokeWidth="0.2" strokeLinecap="round" opacity="0.8"/>
+
+                {/* ==== ENTRY PLATFORM (at top/high square) ==== */}
+                <g transform={`translate(${entry.x} ${entry.y}) rotate(${entryAng - 90})`}>
+                  {/* shadow */}
+                  <ellipse cx="0.3" cy="0.6" rx={wSlide * 1.1} ry={wSlide * 0.55} fill="#000" opacity="0.3" filter="url(#castShadowSoft)"/>
+                  {/* platform base (darker) */}
+                  <ellipse cx="0" cy="0.25" rx={wSlide * 0.95} ry={wSlide * 0.45} fill={cDarker}/>
+                  {/* platform top */}
+                  <ellipse cx="0" cy="0" rx={wSlide * 0.95} ry={wSlide * 0.45} fill={`url(#${uid}-bed)`} stroke={cDarker} strokeWidth="0.15"/>
+                  {/* highlight */}
+                  <ellipse cx="-0.6" cy="-0.25" rx={wSlide * 0.5} ry={wSlide * 0.15} fill="white" opacity="0.35"/>
+                  {/* little safety rail posts on either side */}
+                  <g>
+                    <rect x={-wSlide * 0.85} y={-wSlide * 0.9} width="0.45" height={wSlide * 0.9} fill={cDark} rx="0.15"/>
+                    <rect x={-wSlide * 0.85} y={-wSlide * 0.9} width="0.2" height={wSlide * 0.9} fill={cLight} rx="0.08"/>
+                    <circle cx={-wSlide * 0.85 + 0.22} cy={-wSlide * 0.9} r="0.32" fill={cLight} stroke={cDarker} strokeWidth="0.1"/>
+                    <rect x={wSlide * 0.4} y={-wSlide * 0.9} width="0.45" height={wSlide * 0.9} fill={cDark} rx="0.15"/>
+                    <rect x={wSlide * 0.4} y={-wSlide * 0.9} width="0.2" height={wSlide * 0.9} fill={cLight} rx="0.08"/>
+                    <circle cx={wSlide * 0.4 + 0.22} cy={-wSlide * 0.9} r="0.32" fill={cLight} stroke={cDarker} strokeWidth="0.1"/>
+                    {/* horizontal bar connecting posts */}
+                    <rect x={-wSlide * 0.85 + 0.22} y={-wSlide * 0.9 - 0.1} width={wSlide * 1.25} height="0.3" fill={cLight} rx="0.1" stroke={cDarker} strokeWidth="0.08"/>
+                  </g>
+                </g>
+
+                {/* ==== EXIT FLARE (at bottom/low square) ==== */}
+                <g transform={`translate(${exit_.x} ${exit_.y}) rotate(${exitAng - 90})`}>
+                  {/* shadow */}
+                  <ellipse cx="0.3" cy="0.5" rx={wSlide * 1.0} ry={wSlide * 0.35} fill="#000" opacity="0.3" filter="url(#castShadowSoft)"/>
+                  {/* lip underside */}
+                  <path d={`M ${-wSlide * 0.8} 0 Q 0 ${wSlide * 0.55} ${wSlide * 0.8} 0`} fill={cDarker}/>
+                  {/* lip top */}
+                  <path d={`M ${-wSlide * 0.8} -0.1 Q 0 ${wSlide * 0.45} ${wSlide * 0.8} -0.1 L ${wSlide * 0.65} -0.25 Q 0 ${wSlide * 0.25} ${-wSlide * 0.65} -0.25 Z`}
+                    fill={`url(#${uid}-rail)`} stroke={cDarker} strokeWidth="0.12"/>
+                  {/* highlight on lip */}
+                  <path d={`M ${-wSlide * 0.55} 0.0 Q 0 ${wSlide * 0.28} ${wSlide * 0.55} 0.0`} stroke="white" strokeWidth="0.18" fill="none" opacity="0.75"/>
+                </g>
+              </g>
+            );
+          })}
+        </svg>
+
+        {/* Tokens */}
+        <div className="tokens">
+          {players.map((p, i) => {
+            const sq = tokenPositions[i];
+            if (sq < 1) return null;
+            const { x, y } = squareToPct(sq);
+            // offset so multiple tokens on same square don't overlap completely
+            const sameSquareIdx = players
+              .map((_, j) => j)
+              .filter(j => tokenPositions[j] === sq)
+              .indexOf(i);
+            const ox = (sameSquareIdx % 2) * 3.5 - 1.75;
+            const oy = Math.floor(sameSquareIdx / 2) * 3.5 - 1.75;
+            const isCurrent = i === currentPlayerIdx;
+            const isMoving = isCurrent && phase === 'moving';
+            const isClimbing = isCurrent && phase === 'climbing';
+            const isSliding = isCurrent && phase === 'sliding';
+            return (
+              <div
+                key={p.id}
+                className={`token ${isCurrent ? 'current' : ''} ${p.isAI ? 'robot-token' : ''} ${isMoving ? 'hopping' : ''} ${isClimbing ? 'climbing' : ''} ${isSliding ? 'sliding' : ''}`}
+                style={{
+                  left: `${x + ox}%`,
+                  top: `${y + oy}%`,
+                  '--pcolor': p.color,
+                }}
+              >
+                {p.isAI ? (
+                  <svg viewBox="0 0 24 24" width="70%" height="70%">
+                    <rect x="5" y="7" width="14" height="12" rx="3" fill="white"/>
+                    <circle cx="9" cy="13" r="1.6" fill={p.color}/>
+                    <circle cx="15" cy="13" r="1.6" fill={p.color}/>
+                    <rect x="10" y="16" width="4" height="1.2" rx="0.6" fill={p.color}/>
+                    <rect x="11" y="4" width="2" height="3" fill="white"/>
+                    <circle cx="12" cy="3.5" r="1.2" fill="white"/>
+                  </svg>
+                ) : p.charId ? (
+                  <div style={{width:'130%',height:'130%',display:'flex',alignItems:'center',justifyContent:'center',transform:'translateY(-8%)'}}>
+                    <Character charId={p.charId} size={'100%'}/>
+                  </div>
+                ) : (
+                  <span className="token-label">{p.label}</span>
+                )}
+              </div>
+            );
+          })}
+          {/* FX layer: sparkles on climb, speed-lines on slide */}
+          {(() => {
+            const curSq = tokenPositions[currentPlayerIdx];
+            if (!curSq || curSq < 1) return null;
+            const { x, y } = squareToPct(curSq);
+            if (phase === 'climbing') {
+              return (
+                <div className="fx-sparkles" style={{ left: `${x}%`, top: `${y}%` }}>
+                  {[...Array(8)].map((_, i) => (
+                    <span key={i} className="spark" style={{ '--i': i, '--ang': `${i * 45}deg` }}/>
+                  ))}
+                </div>
+              );
+            }
+            if (phase === 'sliding') {
+              return (
+                <div className="fx-whoosh" style={{ left: `${x}%`, top: `${y}%` }}>
+                  {[...Array(5)].map((_, i) => (
+                    <span key={i} className="whoosh-line" style={{ '--i': i }}/>
+                  ))}
+                </div>
+              );
+            }
+            return null;
+          })()}
+        </div>
+      </div>
+
+      <style>{`
+        .board-wrap {
+          position: relative;
+          width: 100%;
+          aspect-ratio: 1/1;
+          max-width: min(72vh, 720px);
+        }
+        .board {
+          position: relative;
+          width: 100%;
+          height: 100%;
+          background: var(--board-bg);
+          border-radius: 20px;
+          padding: 14px;
+          box-shadow:
+            0 1px 0 rgba(255,255,255,0.04) inset,
+            0 24px 48px -16px rgba(26,31,46,0.35),
+            0 2px 0 rgba(26,31,46,0.1);
+        }
+        .board-grid {
+          position: relative;
+          width: 100%;
+          height: 100%;
+          display: grid;
+          grid-template-columns: repeat(10, 1fr);
+          grid-template-rows: repeat(10, 1fr);
+          gap: 1px;
+          border-radius: 8px;
+          overflow: hidden;
+          background: rgba(255,255,255,0.04);
+        }
+        .sq {
+          position: relative;
+          display: flex;
+          align-items: flex-start;
+          justify-content: flex-start;
+          padding: 4px 5px;
+          transition: background 0.3s;
+        }
+        .sq.light {
+          background: linear-gradient(135deg, #fbf5e8 0%, #f4ecd8 100%);
+          color: #1a1f2e;
+          box-shadow: inset 1px 1px 0 rgba(255,255,255,0.6), inset -1px -1px 0 rgba(0,0,0,0.04);
+        }
+        .sq.dark {
+          background: linear-gradient(135deg, #ece2ca 0%, #ddd0b0 100%);
+          color: #1a1f2e;
+          box-shadow: inset 1px 1px 0 rgba(255,255,255,0.35), inset -1px -1px 0 rgba(0,0,0,0.05);
+        }
+        .sq.hl {
+          background: linear-gradient(135deg, #fff6b0 0%, #ffe074 100%) !important;
+          box-shadow: inset 0 0 0 2px #e8b23e, 0 0 0 2px rgba(232,178,62,0.3);
+          animation: sq-pulse 0.9s ease-in-out infinite;
+        }
+        @keyframes sq-pulse {
+          0%, 100% { box-shadow: inset 0 0 0 2px #e8b23e, 0 0 0 2px rgba(232,178,62,0.3); }
+          50% { box-shadow: inset 0 0 0 2px #e8b23e, 0 0 0 8px rgba(232,178,62,0.5); }
+        }
+        .sq-num {
+          font-size: clamp(9px, 1.1vw, 13px);
+          font-weight: 500;
+          opacity: 0.65;
+          letter-spacing: -0.02em;
+        }
+        .sq-tag {
+          position: absolute;
+          bottom: 3px;
+          right: 4px;
+          font-size: clamp(7px, 0.7vw, 8px);
+          font-family: 'Geist Mono', monospace;
+          font-weight: 500;
+          letter-spacing: 0.08em;
+          color: var(--accent-2);
+        }
+        .sq-tag.gold { color: var(--accent-3); }
+        .sq-dot {
+          position: absolute;
+          bottom: 2px;
+          right: 3px;
+          font-size: 10px;
+          line-height: 1;
+        }
+        .sq-dot.chute { color: var(--accent); }
+        .sq-dot.ladder { color: var(--accent-2); }
+        .board-svg {
+          position: absolute;
+          top: 14px; left: 14px; right: 14px; bottom: 14px;
+          width: calc(100% - 28px);
+          height: calc(100% - 28px);
+          pointer-events: none;
+          overflow: visible;
+          filter: drop-shadow(0 6px 8px rgba(0,0,0,0.35)) drop-shadow(0 2px 2px rgba(0,0,0,0.25));
+          z-index: 3;
+        }
+        .tokens {
+          position: absolute;
+          top: 14px; left: 14px; right: 14px; bottom: 14px;
+          width: calc(100% - 28px);
+          height: calc(100% - 28px);
+          pointer-events: none;
+          z-index: 4;
+        }
+        .token {
+          position: absolute;
+          width: 6%;
+          height: 6%;
+          border-radius: 50%;
+          background: var(--pcolor);
+          transform: translate(-50%, -50%);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow:
+            0 2px 0 rgba(0,0,0,0.25),
+            0 4px 10px rgba(0,0,0,0.3),
+            inset 0 2px 3px rgba(255,255,255,0.4),
+            inset 0 -2px 3px rgba(0,0,0,0.2);
+          transition: left 0.45s cubic-bezier(.5,.1,.5,1.4), top 0.45s cubic-bezier(.5,.1,.5,1.4);
+          z-index: 2;
+        }
+        .token.robot-token {
+          background: var(--robot);
+        }
+        .token.current {
+          z-index: 3;
+          animation: bob 1.4s ease-in-out infinite;
+          box-shadow:
+            0 0 0 3px rgba(255,255,255,0.5),
+            0 0 0 5px var(--pcolor),
+            0 2px 0 rgba(0,0,0,0.25),
+            0 8px 20px rgba(0,0,0,0.35),
+            inset 0 2px 3px rgba(255,255,255,0.4);
+        }
+        @keyframes bob {
+          0%, 100% { transform: translate(-50%, -55%); }
+          50% { transform: translate(-50%, -45%); }
+        }
+        .token.hopping {
+          animation: token-hop 0.32s ease-in-out infinite;
+        }
+        @keyframes token-hop {
+          0%, 100% { transform: translate(-50%, -50%) scale(1); }
+          40% { transform: translate(-50%, -90%) scale(1.12); }
+          70% { transform: translate(-50%, -50%) scale(0.92); }
+        }
+        .token.climbing {
+          animation: token-climb 0.45s ease-in-out infinite;
+          filter: drop-shadow(0 0 8px rgba(42,138,95,0.6));
+        }
+        @keyframes token-climb {
+          0%, 100% { transform: translate(-50%, -50%) rotate(-4deg) scale(1); }
+          50% { transform: translate(-50%, -58%) rotate(4deg) scale(1.08); }
+        }
+        .token.sliding {
+          animation: token-slide 0.35s ease-in-out infinite;
+          filter: drop-shadow(0 0 10px rgba(232,88,62,0.7));
+        }
+        @keyframes token-slide {
+          0% { transform: translate(-50%, -50%) rotate(0deg); }
+          25% { transform: translate(-55%, -48%) rotate(-12deg); }
+          50% { transform: translate(-50%, -52%) rotate(0deg); }
+          75% { transform: translate(-45%, -48%) rotate(12deg); }
+          100% { transform: translate(-50%, -50%) rotate(0deg); }
+        }
+        /* Sparkle burst overlay for ladder climbs */
+        .fx-sparkles {
+          position: absolute;
+          width: 0; height: 0;
+          pointer-events: none;
+          z-index: 6;
+        }
+        .fx-sparkles .spark {
+          position: absolute;
+          left: 0; top: 0;
+          width: 8px; height: 8px;
+          border-radius: 50%;
+          background: radial-gradient(circle, #fff 0%, #ffe074 40%, transparent 70%);
+          transform: translate(-50%, -50%);
+          animation: spark-burst 1s ease-out infinite;
+          animation-delay: calc(var(--i) * 0.08s);
+        }
+        @keyframes spark-burst {
+          0% {
+            transform: translate(-50%, -50%) rotate(var(--ang)) translateX(0) scale(0.4);
+            opacity: 1;
+          }
+          100% {
+            transform: translate(-50%, -50%) rotate(var(--ang)) translateX(26px) scale(0);
+            opacity: 0;
+          }
+        }
+        /* Whoosh motion lines for chute slides */
+        .fx-whoosh {
+          position: absolute;
+          width: 0; height: 0;
+          pointer-events: none;
+          z-index: 6;
+        }
+        .fx-whoosh .whoosh-line {
+          position: absolute;
+          left: -14px;
+          top: calc(var(--i) * 5px - 10px);
+          width: 28px;
+          height: 2px;
+          border-radius: 1px;
+          background: linear-gradient(90deg, transparent, rgba(232,88,62,0.9), transparent);
+          animation: whoosh-move 0.5s linear infinite;
+          animation-delay: calc(var(--i) * 0.08s);
+        }
+        @keyframes whoosh-move {
+          0% { transform: translateX(-30px); opacity: 0; }
+          40% { opacity: 1; }
+          100% { transform: translateX(30px); opacity: 0; }
+        }
+        .token-label {
+          color: white;
+          font-weight: 700;
+          font-size: clamp(9px, 1vw, 12px);
+          text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+        }
+      `}</style>
+    </div>
+  );
+}
+
+window.Board = Board;
+window.CHUTES = CHUTES;
+window.LADDERS = LADDERS;
+window.squareToPct = squareToPct;
+
+
+// === characters.jsx ===
+// Robot AI character
+
+function Robot({ mood = 'happy', size = 80, color = '#1a1f2e' }) {
+  // mood: happy | thinking | celebrating | sad
+  const eyeY = mood === 'sad' ? 13 : 12;
+  const mouth = {
+    happy: <path d="M 9 16 Q 12 18 15 16" stroke={color} strokeWidth="1" fill="none" strokeLinecap="round"/>,
+    thinking: <line x1="10" y1="17" x2="14" y2="17" stroke={color} strokeWidth="1" strokeLinecap="round"/>,
+    celebrating: <ellipse cx="12" cy="17" rx="2" ry="1.5" fill={color}/>,
+    sad: <path d="M 9 17 Q 12 15 15 17" stroke={color} strokeWidth="1" fill="none" strokeLinecap="round"/>,
+  }[mood];
+
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} style={{ display: 'block' }}>
+      {/* antenna */}
+      <line x1="12" y1="5" x2="12" y2="3" stroke={color} strokeWidth="0.8" strokeLinecap="round"/>
+      <circle cx="12" cy="2.5" r="1" fill="#e8b23e">
+        {mood === 'thinking' && <animate attributeName="opacity" values="1;0.3;1" dur="1s" repeatCount="indefinite"/>}
+      </circle>
+      {/* head */}
+      <rect x="5" y="5" width="14" height="13" rx="3.5" fill={color}/>
+      {/* screen */}
+      <rect x="6.5" y="7" width="11" height="9" rx="2" fill="#f7f1e4"/>
+      {/* eyes */}
+      <circle cx="9.5" cy={eyeY} r="1.3" fill={color}>
+        <animate attributeName="r" values="1.3;1.3;0.2;1.3" keyTimes="0;0.9;0.95;1" dur="4s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="14.5" cy={eyeY} r="1.3" fill={color}>
+        <animate attributeName="r" values="1.3;1.3;0.2;1.3" keyTimes="0;0.9;0.95;1" dur="4s" repeatCount="indefinite"/>
+      </circle>
+      {/* mouth */}
+      {mouth}
+      {/* cheek blush */}
+      <circle cx="7.5" cy="15" r="0.8" fill="#e8583e" opacity="0.5"/>
+      <circle cx="16.5" cy="15" r="0.8" fill="#e8583e" opacity="0.5"/>
+      {/* body hint */}
+      <rect x="8" y="18" width="8" height="3" rx="1" fill={color} opacity="0.3"/>
+    </svg>
+  );
+}
+
+// Human player avatar (simple silhouette with color)
+function Avatar({ label, color, size = 48, isCurrent = false }) {
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: '50%',
+        background: color,
+        color: 'white',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontWeight: 700,
+        fontSize: size * 0.4,
+        boxShadow: isCurrent
+          ? `0 0 0 3px var(--bg), 0 0 0 5px ${color}, 0 4px 10px rgba(0,0,0,0.2)`
+          : '0 2px 6px rgba(0,0,0,0.15), inset 0 2px 3px rgba(255,255,255,0.3)',
+        flexShrink: 0,
+      }}
+    >
+      {label}
+    </div>
+  );
+}
+
+// 3D-styled character roster — each is a layered SVG with gradients, highlights, shadow
+const CHARACTERS = [
+  { id: 'bolt',   name: 'Bolt',   color: '#e8b23e' },
+  { id: 'pip',    name: 'Pip',    color: '#e8583e' },
+  { id: 'mochi',  name: 'Mochi',  color: '#f6c6d4' },
+  { id: 'fern',   name: 'Fern',   color: '#2a8a5f' },
+  { id: 'luna',   name: 'Luna',   color: '#5b6cff' },
+  { id: 'ziggy',  name: 'Ziggy',  color: '#a855a0' },
+  { id: 'ember',  name: 'Ember',  color: '#ff8a3d' },
+  { id: 'coco',   name: 'Coco',   color: '#6d4a2e' },
+];
+
+function Character({ charId, size = 56, spin = false }) {
+  const c = CHARACTERS.find(x => x.id === charId) || CHARACTERS[0];
+  const darken = (hex, amt = 0.25) => {
+    const n = parseInt(hex.slice(1), 16);
+    const r = Math.max(0, ((n >> 16) & 255) * (1 - amt));
+    const g = Math.max(0, ((n >> 8) & 255) * (1 - amt));
+    const b = Math.max(0, (n & 255) * (1 - amt));
+    return `rgb(${r|0}, ${g|0}, ${b|0})`;
+  };
+  const lighten = (hex, amt = 0.3) => {
+    const n = parseInt(hex.slice(1), 16);
+    const r = Math.min(255, ((n >> 16) & 255) + 255 * amt);
+    const g = Math.min(255, ((n >> 8) & 255) + 255 * amt);
+    const b = Math.min(255, (n & 255) + 255 * amt);
+    return `rgb(${r|0}, ${g|0}, ${b|0})`;
+  };
+  const base = c.color;
+  const dark = darken(base, 0.4);
+  const darker = darken(base, 0.65);
+  const light = lighten(base, 0.35);
+  const lighter = lighten(base, 0.7);
+  const uid = c.id;
+
+  // ======== True 3D shading defs ========
+  // Every character uses: body sphere gradient (key light top-left), rim light (bottom-right),
+  // glossy specular highlight, soft ground shadow.
+  const defs = (
+    <defs>
+      {/* Main body sphere — warm key light from upper-left */}
+      <radialGradient id={`body-${uid}`} cx="0.32" cy="0.25" r="0.85" fx="0.28" fy="0.22">
+        <stop offset="0%" stopColor={lighter}/>
+        <stop offset="25%" stopColor={light}/>
+        <stop offset="60%" stopColor={base}/>
+        <stop offset="95%" stopColor={dark}/>
+        <stop offset="100%" stopColor={darker}/>
+      </radialGradient>
+      {/* Rim / bounce light from bottom-right */}
+      <radialGradient id={`rim-${uid}`} cx="0.78" cy="0.82" r="0.4">
+        <stop offset="0%" stopColor={light} stopOpacity="0.75"/>
+        <stop offset="70%" stopColor={base} stopOpacity="0"/>
+      </radialGradient>
+      {/* Hard glossy specular dot */}
+      <radialGradient id={`spec-${uid}`} cx="0.32" cy="0.22" r="0.18">
+        <stop offset="0%" stopColor="white" stopOpacity="0.95"/>
+        <stop offset="60%" stopColor="white" stopOpacity="0.3"/>
+        <stop offset="100%" stopColor="white" stopOpacity="0"/>
+      </radialGradient>
+      {/* Ambient occlusion / core shadow near ground */}
+      <radialGradient id={`ao-${uid}`} cx="0.5" cy="0.95" r="0.5">
+        <stop offset="0%" stopColor={darker} stopOpacity="0.55"/>
+        <stop offset="70%" stopColor={darker} stopOpacity="0"/>
+      </radialGradient>
+      {/* Eye sphere */}
+      <radialGradient id={`eye-${uid}`} cx="0.35" cy="0.3" r="0.8">
+        <stop offset="0%" stopColor="#ffffff"/>
+        <stop offset="75%" stopColor="#dcdfe6"/>
+        <stop offset="100%" stopColor="#9fa4b2"/>
+      </radialGradient>
+      {/* Pupil */}
+      <radialGradient id={`pupil-${uid}`} cx="0.4" cy="0.35" r="0.6">
+        <stop offset="0%" stopColor="#2a3144"/>
+        <stop offset="100%" stopColor="#0a0d14"/>
+      </radialGradient>
+      {/* Cheek blush */}
+      <radialGradient id={`blush-${uid}`} cx="0.5" cy="0.5" r="0.5">
+        <stop offset="0%" stopColor="#ff7a8e" stopOpacity="0.55"/>
+        <stop offset="100%" stopColor="#ff7a8e" stopOpacity="0"/>
+      </radialGradient>
+      {/* Soft blur for cast shadow */}
+      <filter id={`blur-${uid}`} x="-30%" y="-30%" width="160%" height="160%">
+        <feGaussianBlur stdDeviation="0.6"/>
+      </filter>
+      <filter id={`softblur-${uid}`}>
+        <feGaussianBlur stdDeviation="0.25"/>
+      </filter>
+    </defs>
+  );
+
+  // 3D eye: white sphere with shaded pupil and catch-light
+  const eye3D = (cx, cy, r = 1.1) => (
+    <g>
+      <ellipse cx={cx + 0.08} cy={cy + 0.15} rx={r * 1.05} ry={r * 1.05} fill="#000" opacity="0.15" filter={`url(#softblur-${uid})`}/>
+      <circle cx={cx} cy={cy} r={r} fill={`url(#eye-${uid})`}/>
+      <circle cx={cx + 0.1} cy={cy + 0.15} r={r * 0.55} fill={`url(#pupil-${uid})`}/>
+      <circle cx={cx - 0.15} cy={cy - 0.2} r={r * 0.25} fill="white" opacity="0.95"/>
+      <circle cx={cx + 0.3} cy={cy + 0.3} r={r * 0.1} fill="white" opacity="0.7"/>
+    </g>
+  );
+
+  // Mouth with depth — small dark pill with highlight on lower lip
+  const mouth3D = (cx, cy, w = 1.6) => (
+    <g>
+      <path d={`M ${cx - w/2} ${cy} Q ${cx} ${cy + 0.8} ${cx + w/2} ${cy}`} stroke={darker} strokeWidth="0.35" fill="#3a1a1a" strokeLinecap="round"/>
+      <path d={`M ${cx - w/2 + 0.2} ${cy + 0.2} Q ${cx} ${cy + 0.5} ${cx + w/2 - 0.2} ${cy + 0.2}`} stroke="#ff9aa5" strokeWidth="0.15" fill="none" opacity="0.6"/>
+    </g>
+  );
+
+  // Blush cheeks
+  const cheeks = (ly, scale = 1) => (
+    <g>
+      <ellipse cx="8" cy={ly} rx={1.1 * scale} ry={0.7 * scale} fill={`url(#blush-${uid})`}/>
+      <ellipse cx="16" cy={ly} rx={1.1 * scale} ry={0.7 * scale} fill={`url(#blush-${uid})`}/>
+    </g>
+  );
+
+  // Shared shaded body (sphere layers) — renders 3D sphere shading at given shape
+  const sphereShade = (shapeEl) => (
+    <>
+      {shapeEl({ fill: `url(#body-${uid})` })}
+      {shapeEl({ fill: `url(#rim-${uid})` })}
+      {shapeEl({ fill: `url(#ao-${uid})` })}
+      {shapeEl({ fill: `url(#spec-${uid})` })}
+    </>
+  );
+
+  // Cast shadow on ground
+  const groundShadow = (
+    <ellipse cx="12" cy="22.5" rx="6.5" ry="0.9" fill="#000" opacity="0.28" filter={`url(#blur-${uid})`}/>
+  );
+
+  // ---------- Bodies ----------
+  const bodies = {
+    // Bolt — glossy 3D star
+    bolt: (() => {
+      const star = (props) => (
+        <path d="M 12 2.5 L 14.6 8.4 L 21 9.1 L 16.2 13.4 L 17.8 19.8 L 12 16.5 L 6.2 19.8 L 7.8 13.4 L 3 9.1 L 9.4 8.4 Z"
+          stroke={darker} strokeWidth="0.25" strokeLinejoin="round" {...props}/>
+      );
+      return (
+        <g>
+          {groundShadow}
+          {sphereShade(star)}
+          {eye3D(9.2, 11.5, 0.9)}
+          {eye3D(14.8, 11.5, 0.9)}
+          {mouth3D(12, 14, 1.4)}
+          {cheeks(14.5, 0.9)}
+        </g>
+      );
+    })(),
+
+    // Pip — 3D apple with volumetric leaf and stem
+    pip: (() => {
+      const body = (props) => (
+        <path d="M 12 5.5 C 6 5.5 3 9 3 13.5 C 3 18.5 7 21.5 12 21.5 C 17 21.5 21 18.5 21 13.5 C 21 9 18 5.5 12 5.5 Z"
+          stroke={darker} strokeWidth="0.25" {...props}/>
+      );
+      return (
+        <g>
+          {groundShadow}
+          {/* stem with shading */}
+          <path d="M 11.5 5.5 L 11.7 3.2 L 12.5 3.2 L 12.3 5.5 Z" fill="#3a2410"/>
+          <path d="M 11.7 3.2 L 12.1 3.2 L 11.9 5.5 L 11.6 5.5 Z" fill="#6d4a2e"/>
+          {/* leaf with 3D shading */}
+          <defs>
+            <linearGradient id={`leaf-${uid}`} x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#5fc98b"/>
+              <stop offset="50%" stopColor="#2a8a5f"/>
+              <stop offset="100%" stopColor="#164a32"/>
+            </linearGradient>
+          </defs>
+          <path d="M 12.3 4.5 Q 17 2 18 5 Q 15 6.5 12.3 6 Z" fill={`url(#leaf-${uid})`} stroke="#164a32" strokeWidth="0.15"/>
+          <path d="M 13 4.8 Q 16 3.5 17.3 4.8" stroke="white" strokeWidth="0.15" fill="none" opacity="0.5"/>
+          {/* body spheres */}
+          {sphereShade(body)}
+          {/* top dimple */}
+          <ellipse cx="12" cy="6.3" rx="1" ry="0.4" fill={darker} opacity="0.5"/>
+          {eye3D(9.5, 13, 1.1)}
+          {eye3D(14.5, 13, 1.1)}
+          {mouth3D(12, 15.5, 1.7)}
+          {cheeks(16, 1)}
+        </g>
+      );
+    })(),
+
+    // Mochi — 3D bunny, volumetric ears, soft body
+    mochi: (() => {
+      const body = (props) => (
+        <ellipse cx="12" cy="14.5" rx="7.5" ry="7.2" stroke={darker} strokeWidth="0.25" {...props}/>
+      );
+      return (
+        <g>
+          {groundShadow}
+          {/* ear back (darker) */}
+          <ellipse cx="8.2" cy="5" rx="1.8" ry="3.8" fill={dark} transform="rotate(-15 8.2 5)"/>
+          <ellipse cx="15.8" cy="5" rx="1.8" ry="3.8" fill={dark} transform="rotate(15 15.8 5)"/>
+          {/* ear front shaded */}
+          <ellipse cx="8.2" cy="5.2" rx="1.3" ry="3.3" fill={`url(#body-${uid})`} transform="rotate(-15 8.2 5.2)"/>
+          <ellipse cx="15.8" cy="5.2" rx="1.3" ry="3.3" fill={`url(#body-${uid})`} transform="rotate(15 15.8 5.2)"/>
+          {/* inner ear pink */}
+          <ellipse cx="8.2" cy="5.8" rx="0.55" ry="2.2" fill="#ff9db0" transform="rotate(-15 8.2 5.8)"/>
+          <ellipse cx="15.8" cy="5.8" rx="0.55" ry="2.2" fill="#ff9db0" transform="rotate(15 15.8 5.8)"/>
+          <ellipse cx="8.2" cy="5.8" rx="0.3" ry="1.5" fill="#ffc2ce" transform="rotate(-15 8.2 5.8)"/>
+          <ellipse cx="15.8" cy="5.8" rx="0.3" ry="1.5" fill="#ffc2ce" transform="rotate(15 15.8 5.8)"/>
+          {sphereShade(body)}
+          {eye3D(9.3, 13.5, 1.1)}
+          {eye3D(14.7, 13.5, 1.1)}
+          {/* 3D nose */}
+          <ellipse cx="12" cy="15.2" rx="0.55" ry="0.4" fill="#ff7a8e"/>
+          <ellipse cx="11.9" cy="15.1" rx="0.2" ry="0.15" fill="#ffc2ce"/>
+          {mouth3D(12, 16.1, 1.2)}
+          {cheeks(16.2, 1)}
+        </g>
+      );
+    })(),
+
+    // Fern — 3D frog w/ eye-domes
+    fern: (() => {
+      const body = (props) => (
+        <ellipse cx="12" cy="15" rx="8.5" ry="6.5" stroke={darker} strokeWidth="0.25" {...props}/>
+      );
+      return (
+        <g>
+          {groundShadow}
+          {sphereShade(body)}
+          {/* eye domes with gradient (emerging from head) */}
+          <g>
+            <circle cx="7.5" cy="8.5" r="3.2" fill={dark}/>
+            <circle cx="7.5" cy="8.3" r="2.9" fill={`url(#body-${uid})`}/>
+            <circle cx="16.5" cy="8.5" r="3.2" fill={dark}/>
+            <circle cx="16.5" cy="8.3" r="2.9" fill={`url(#body-${uid})`}/>
+            {/* big 3D eyeballs */}
+            <circle cx="7.5" cy="7.8" r="2" fill={`url(#eye-${uid})`}/>
+            <circle cx="16.5" cy="7.8" r="2" fill={`url(#eye-${uid})`}/>
+            <circle cx="7.7" cy="8" r="1.1" fill={`url(#pupil-${uid})`}/>
+            <circle cx="16.7" cy="8" r="1.1" fill={`url(#pupil-${uid})`}/>
+            <circle cx="7.3" cy="7.5" r="0.45" fill="white"/>
+            <circle cx="16.3" cy="7.5" r="0.45" fill="white"/>
+          </g>
+          {/* belly highlight */}
+          <ellipse cx="12" cy="17" rx="4" ry="2.5" fill={lighter} opacity="0.35"/>
+          <path d="M 9.5 16 Q 12 18.8 14.5 16" stroke={darker} strokeWidth="0.4" fill="none" strokeLinecap="round"/>
+          {cheeks(16.3, 1)}
+        </g>
+      );
+    })(),
+
+    // Luna — 3D cat/moon creature
+    luna: (() => {
+      const body = (props) => (
+        <ellipse cx="12" cy="13.5" rx="8" ry="7.8" stroke={darker} strokeWidth="0.25" {...props}/>
+      );
+      return (
+        <g>
+          {groundShadow}
+          {/* ears back */}
+          <path d="M 6 8 L 7.5 3.5 L 10 8 Z" fill={darker}/>
+          <path d="M 18 8 L 16.5 3.5 L 14 8 Z" fill={darker}/>
+          {/* ears front */}
+          <path d="M 6.3 8 L 7.6 4.2 L 9.7 8 Z" fill={`url(#body-${uid})`}/>
+          <path d="M 17.7 8 L 16.4 4.2 L 14.3 8 Z" fill={`url(#body-${uid})`}/>
+          {/* inner ear */}
+          <path d="M 7.1 7.5 L 7.7 5.5 L 8.6 7.5 Z" fill="#ff9db0"/>
+          <path d="M 16.9 7.5 L 16.3 5.5 L 15.4 7.5 Z" fill="#ff9db0"/>
+          {sphereShade(body)}
+          {eye3D(9.5, 12.5, 1.2)}
+          {eye3D(14.5, 12.5, 1.2)}
+          {/* nose */}
+          <path d="M 11.4 14.3 L 12.6 14.3 L 12 15.1 Z" fill="#ff7a8e"/>
+          <path d="M 12 15.1 Q 11 16 10 15.5" stroke={darker} strokeWidth="0.3" fill="none" strokeLinecap="round"/>
+          <path d="M 12 15.1 Q 13 16 14 15.5" stroke={darker} strokeWidth="0.3" fill="none" strokeLinecap="round"/>
+          {/* whiskers */}
+          <line x1="4.5" y1="14.5" x2="7.5" y2="14.5" stroke={darker} strokeWidth="0.15"/>
+          <line x1="16.5" y1="14.5" x2="19.5" y2="14.5" stroke={darker} strokeWidth="0.15"/>
+          <line x1="5" y1="15.3" x2="7.5" y2="15" stroke={darker} strokeWidth="0.15"/>
+          <line x1="16.5" y1="15" x2="19" y2="15.3" stroke={darker} strokeWidth="0.15"/>
+          {cheeks(15.8, 1)}
+        </g>
+      );
+    })(),
+
+    // Ziggy — 3D spiky burst
+    ziggy: (() => {
+      const spike = (props) => (
+        <path d="M 12 2 L 13.2 5.5 L 16.5 3.5 L 15.8 7 L 20 6 L 17.8 9.2 L 21.5 11 L 18.5 12.5 L 21 15.8 L 17 15.5 L 17.5 19.5 L 14 17.5 L 13 21.2 L 11 18.2 L 9 21.2 L 8 17.5 L 4.5 19.5 L 5 15.5 L 1 15.8 L 3.5 12.5 L 0.5 11 L 4.2 9.2 L 2 6 L 6.2 7 L 5.5 3.5 L 8.8 5.5 Z"
+          stroke={darker} strokeWidth="0.25" strokeLinejoin="round" {...props}/>
+      );
+      return (
+        <g>
+          {groundShadow}
+          {sphereShade(spike)}
+          {eye3D(9.5, 10.5, 1)}
+          {eye3D(14.5, 10.5, 1)}
+          {mouth3D(12, 13, 1.4)}
+          {cheeks(12.8, 0.9)}
+        </g>
+      );
+    })(),
+
+    // Ember — 3D flame with inner glow
+    ember: (() => {
+      const flame = (props) => (
+        <path d="M 12 2 Q 8.5 7.5 8.5 11.5 Q 6.5 10 5.5 14 Q 4 19.5 12 21.8 Q 20 19.5 18.5 14 Q 17.5 10 15.5 11.5 Q 15.5 7.5 12 2 Z"
+          stroke={darker} strokeWidth="0.25" {...props}/>
+      );
+      return (
+        <g>
+          {groundShadow}
+          {sphereShade(flame)}
+          {/* inner flame */}
+          <defs>
+            <radialGradient id={`inner-${uid}`} cx="0.5" cy="0.6" r="0.5">
+              <stop offset="0%" stopColor="#fff4c2" stopOpacity="0.95"/>
+              <stop offset="50%" stopColor="#ffd16a" stopOpacity="0.55"/>
+              <stop offset="100%" stopColor="#ffd16a" stopOpacity="0"/>
+            </radialGradient>
+          </defs>
+          <path d="M 12 6 Q 10.5 9 10.5 12 Q 9.5 13 9.5 15 Q 10 17 12 18 Q 14 17 14.5 15 Q 14.5 13 13.5 12 Q 13.5 9 12 6 Z" fill={`url(#inner-${uid})`}/>
+          {eye3D(9.5, 14.5, 0.95)}
+          {eye3D(14.5, 14.5, 0.95)}
+          {mouth3D(12, 16.8, 1.3)}
+          {cheeks(17, 0.85)}
+        </g>
+      );
+    })(),
+
+    // Coco — 3D bear with ear lobes and snout
+    coco: (() => {
+      const body = (props) => (
+        <circle cx="12" cy="13.5" r="8" stroke={darker} strokeWidth="0.25" {...props}/>
+      );
+      return (
+        <g>
+          {groundShadow}
+          {/* ears with depth */}
+          <circle cx="6.5" cy="7" r="2.4" fill={darker}/>
+          <circle cx="17.5" cy="7" r="2.4" fill={darker}/>
+          <circle cx="6.7" cy="6.8" r="2" fill={`url(#body-${uid})`}/>
+          <circle cx="17.3" cy="6.8" r="2" fill={`url(#body-${uid})`}/>
+          <circle cx="6.7" cy="6.8" r="1.2" fill={dark}/>
+          <circle cx="17.3" cy="6.8" r="1.2" fill={dark}/>
+          <circle cx="6.9" cy="6.6" r="0.9" fill={lighten(base, 0.15)}/>
+          <circle cx="17.1" cy="6.6" r="0.9" fill={lighten(base, 0.15)}/>
+          {sphereShade(body)}
+          {/* muzzle / snout with shading */}
+          <ellipse cx="12" cy="15.8" rx="3.5" ry="2.6" fill={lighter} opacity="0.8"/>
+          <ellipse cx="12" cy="15.8" rx="3.5" ry="2.6" fill={`url(#ao-${uid})`}/>
+          <ellipse cx="12" cy="14.5" rx="0.7" ry="0.5" fill="#1a1f2e"/>
+          <ellipse cx="11.9" cy="14.4" rx="0.2" ry="0.15" fill="white" opacity="0.6"/>
+          <path d="M 12 15 L 12 16" stroke={darker} strokeWidth="0.25"/>
+          <path d="M 12 16 Q 11 16.8 10.2 16.4" stroke={darker} strokeWidth="0.35" fill="none" strokeLinecap="round"/>
+          <path d="M 12 16 Q 13 16.8 13.8 16.4" stroke={darker} strokeWidth="0.35" fill="none" strokeLinecap="round"/>
+          {eye3D(9.2, 12.8, 1.1)}
+          {eye3D(14.8, 12.8, 1.1)}
+          {cheeks(16.3, 0.9)}
+        </g>
+      );
+    })(),
+  };
+
+  return (
+    <div style={{
+      width: size, height: size,
+      display: 'inline-block',
+      position: 'relative',
+    }}>
+      <svg viewBox="0 0 24 24" width={size} height={size} style={{
+        filter: 'drop-shadow(0 4px 5px rgba(0,0,0,0.3)) drop-shadow(0 1px 0 rgba(255,255,255,0.2))',
+        animation: spin ? 'char-bob 2.2s ease-in-out infinite' : undefined,
+        display: 'block',
+        overflow: 'visible',
+      }}>
+        {defs}
+        {bodies[c.id]}
+      </svg>
+      <style>{`@keyframes char-bob { 0%,100%{transform:translateY(0) rotate(-2deg);} 50%{transform:translateY(-4px) rotate(2deg);} }`}</style>
+    </div>
+  );
+}
+
+window.CHARACTERS = CHARACTERS;
+window.Character = Character;
+window.Robot = Robot;
+window.Avatar = Avatar;
+
+
+// === dice.jsx ===
+// Dice component
+
+function Dice({ value, rolling, onClick, disabled }) {
+  // Pip layouts for each face (using CSS grid 3x3, 1-indexed coords)
+  const faces = {
+    1: [[2,2]],
+    2: [[1,1],[3,3]],
+    3: [[1,1],[2,2],[3,3]],
+    4: [[1,1],[1,3],[3,1],[3,3]],
+    5: [[1,1],[1,3],[2,2],[3,1],[3,3]],
+    6: [[1,1],[1,3],[2,1],[2,3],[3,1],[3,3]],
+  };
+
+  // For a standard die: opposite faces sum to 7
+  // Map each face (value 1..6) to its rotation (around X/Y) so it points forward.
+  // Face placements on the cube:
+  //   front: 1, back: 6, right: 2, left: 5, top: 3, bottom: 4
+  const faceRotations = {
+    1: { x: 0,   y: 0   },
+    6: { x: 0,   y: 180 },
+    2: { x: 0,   y: -90 },
+    5: { x: 0,   y: 90  },
+    3: { x: -90, y: 0   },
+    4: { x: 90,  y: 0   },
+  };
+
+  // During roll: accumulate random full rotations for chaos; settle on the correct target for `value`.
+  const [rollTick, setRollTick] = React.useState(0);
+  const [currentRot, setCurrentRot] = React.useState({ x: -20, y: 25, tx: 0, ty: 0, bounce: 0 });
+  const wasRolling = React.useRef(false);
+
+  React.useEffect(() => {
+    let raf;
+    if (rolling) {
+      wasRolling.current = true;
+      // Physics-like tumble: spin x and y at different rates, with jitter translation and a bounce
+      const start = performance.now();
+      const tick = (now) => {
+        const t = (now - start) / 1000;
+        const x = -20 + 720 * t + Math.sin(t * 14) * 30;
+        const y = 25 + 900 * t + Math.cos(t * 11) * 40;
+        // simulated bounce: abs sine decaying
+        const bounceT = (t * 3) % 1;
+        const bounce = Math.abs(Math.sin(bounceT * Math.PI)) * (1 - Math.min(1, t / 1.2)) * 18;
+        // tumbling translation (random walk)
+        const tx = Math.sin(t * 17) * 6 + Math.cos(t * 9) * 4;
+        const ty = Math.cos(t * 13) * 4 + Math.sin(t * 23) * 3;
+        setCurrentRot({ x, y, tx, ty, bounce });
+        raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+    } else if (wasRolling.current) {
+      // Settle: animate to the exact face rotation + a couple extra spins for realism
+      wasRolling.current = false;
+      const target = faceRotations[value] || faceRotations[1];
+      const from = currentRot;
+      // Choose final rotation that's close to current but lands on target multiples of 360
+      const finalX = Math.round(from.x / 360) * 360 + target.x + 360;
+      const finalY = Math.round(from.y / 360) * 360 + target.y + 360;
+      const startTime = performance.now();
+      const dur = 650;
+      const tick = (now) => {
+        const p = Math.min(1, (now - startTime) / dur);
+        // easeOutQuart
+        const e = 1 - Math.pow(1 - p, 4);
+        // tiny settle bounce
+        const settleBounce = p > 0.85 ? Math.sin((p - 0.85) / 0.15 * Math.PI) * 8 * (1 - p) : 0;
+        setCurrentRot({
+          x: from.x + (finalX - from.x) * e,
+          y: from.y + (finalY - from.y) * e,
+          tx: from.tx * (1 - e),
+          ty: from.ty * (1 - e) - settleBounce,
+          bounce: settleBounce,
+        });
+        if (p < 1) raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+    } else {
+      // not rolling and never rolled yet: snap to value
+      const target = faceRotations[value] || faceRotations[1];
+      setCurrentRot(c => ({ ...c, x: target.x - 20, y: target.y + 25 }));
+    }
+    return () => raf && cancelAnimationFrame(raf);
+  }, [rolling, value]);
+
+  const Pip = ({ r, c }) => (
+    <span className="d3-pip" style={{ gridRow: r, gridColumn: c }}/>
+  );
+
+  const Face = ({ faceVal, transform }) => (
+    <div className="d3-face" style={{ transform }}>
+      <div className="d3-pips">
+        {faces[faceVal].map(([r, c], i) => <Pip key={i} r={r} c={c}/>)}
+      </div>
+    </div>
+  );
+
+  const shadowScale = 1 + currentRot.bounce / 40;
+  const shadowOpacity = Math.max(0.15, 0.45 - currentRot.bounce / 50);
+
+  return (
+    <button
+      className={`dice3d ${rolling ? 'rolling' : ''}`}
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={`Dice showing ${value}`}
+    >
+      <div className="d3-scene">
+        <div
+          className="d3-cube"
+          style={{
+            transform: `translate3d(${currentRot.tx}px, ${currentRot.ty - currentRot.bounce}px, 0) rotateX(${currentRot.x}deg) rotateY(${currentRot.y}deg)`,
+          }}
+        >
+          <Face faceVal={1} transform="translateZ(var(--half))"/>
+          <Face faceVal={6} transform="rotateY(180deg) translateZ(var(--half))"/>
+          <Face faceVal={2} transform="rotateY(90deg) translateZ(var(--half))"/>
+          <Face faceVal={5} transform="rotateY(-90deg) translateZ(var(--half))"/>
+          <Face faceVal={3} transform="rotateX(90deg) translateZ(var(--half))"/>
+          <Face faceVal={4} transform="rotateX(-90deg) translateZ(var(--half))"/>
+        </div>
+        <div
+          className="d3-shadow"
+          style={{
+            transform: `translateX(-50%) scale(${shadowScale})`,
+            opacity: shadowOpacity,
+          }}
+        />
+      </div>
+      <style>{`
+        .dice3d {
+          width: 100%;
+          aspect-ratio: 1/1;
+          background: transparent;
+          border: none;
+          padding: 0;
+          cursor: pointer;
+          position: relative;
+          --size: 72px;
+          --half: 36px;
+        }
+        .dice3d:disabled { cursor: not-allowed; opacity: 0.75; }
+        .dice3d:not(:disabled):not(.rolling) .d3-cube { animation: dice-breathe 2.2s ease-in-out infinite; }
+        @keyframes dice-breathe {
+          0%, 100% { filter: drop-shadow(0 4px 8px rgba(0,0,0,0.18)) brightness(1); }
+          50% { filter: drop-shadow(0 6px 14px rgba(232,88,62,0.35)) brightness(1.05); }
+        }
+        .dice3d:hover:not(:disabled) .d3-cube { filter: brightness(1.08) drop-shadow(0 8px 16px rgba(232,88,62,0.4)); }
+        .dice3d:active:not(:disabled) .d3-cube { transform: translateY(2px); }
+        .d3-scene {
+          position: absolute;
+          inset: 0;
+          perspective: 600px;
+          perspective-origin: 50% 40%;
+          display: flex; align-items: center; justify-content: center;
+        }
+        .d3-cube {
+          position: relative;
+          width: var(--size);
+          height: var(--size);
+          transform-style: preserve-3d;
+          will-change: transform;
+        }
+        .d3-face {
+          position: absolute;
+          inset: 0;
+          width: var(--size);
+          height: var(--size);
+          background:
+            radial-gradient(circle at 30% 25%, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0) 45%),
+            linear-gradient(145deg, #ffffff 0%, #f4ecd8 55%, #d9ccac 100%);
+          border-radius: 18%;
+          box-shadow:
+            inset 0 0 0 1px rgba(255,255,255,0.85),
+            inset 0 -4px 10px rgba(120,95,55,0.2),
+            inset 0 2px 4px rgba(255,255,255,0.9);
+          backface-visibility: hidden;
+          padding: 10%;
+        }
+        .d3-pips {
+          width: 100%;
+          height: 100%;
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          grid-template-rows: repeat(3, 1fr);
+          place-items: center;
+        }
+        .d3-pip {
+          width: 70%;
+          aspect-ratio: 1/1;
+          border-radius: 50%;
+          background: radial-gradient(circle at 35% 30%, #54607a 0%, #1a1f2e 60%, #0c0f18 100%);
+          box-shadow:
+            inset 0 -2px 3px rgba(255,255,255,0.15),
+            inset 0 2px 3px rgba(0,0,0,0.5),
+            0 0.5px 1px rgba(255,255,255,0.8);
+        }
+        .d3-shadow {
+          position: absolute;
+          bottom: 4%;
+          left: 50%;
+          width: 72%;
+          height: 10%;
+          background: radial-gradient(ellipse at center, rgba(26,31,46,0.55) 0%, rgba(26,31,46,0) 70%);
+          filter: blur(3px);
+          pointer-events: none;
+          transition: opacity 0.1s;
+        }
+      `}</style>
+    </button>
+  );
+}
+
+window.Dice = Dice;
+
+
+// === modeselect.jsx ===
+// Mode selection screen
+
+const PLAYER_COLORS = ['#e8583e', '#2a8a5f', '#e8b23e', '#5b6cff', '#a855a0'];
+const DEFAULT_NAMES = ['Ruby', 'Sage', 'Sunny', 'Indie', 'Mauve'];
+
+function ModeSelect({ onStart }) {
+  const [mode, setMode] = React.useState(null); // 'multi' | 'ai'
+  const [humanCount, setHumanCount] = React.useState(2);
+  const [aiDifficulty, setAiDifficulty] = React.useState('normal');
+  const [playerName, setPlayerName] = React.useState('You');
+  const [names, setNames] = React.useState([...DEFAULT_NAMES]);
+  // one character per slot; default to first N distinct
+  const [chars, setChars] = React.useState(CHARACTERS.slice(0, 5).map(c => c.id));
+  const [myChar, setMyChar] = React.useState(CHARACTERS[0].id);
+
+  const colorFor = (cid) => (CHARACTERS.find(c => c.id === cid) || CHARACTERS[0]).color;
+
+  const start = () => {
+    if (mode === 'ai') {
+      onStart({
+        players: [
+          { id: 'p0', name: playerName || 'You', label: (playerName || 'Y')[0].toUpperCase(), color: colorFor(myChar), charId: myChar, isAI: false },
+          { id: 'ai', name: 'BLIP', label: 'AI', color: '#1a1f2e', charId: null, isAI: true },
+        ],
+        aiDifficulty,
+      });
+    } else {
+      const players = Array.from({ length: humanCount }, (_, i) => ({
+        id: 'p' + i,
+        name: names[i] || `Player ${i + 1}`,
+        label: (names[i] || `P${i+1}`)[0].toUpperCase(),
+        color: colorFor(chars[i]),
+        charId: chars[i],
+        isAI: false,
+      }));
+      onStart({ players });
+    }
+  };
+
+  const setCharAt = (idx, newCid) => {
+    setChars(prev => {
+      const next = [...prev];
+      // if another slot already has this char, swap
+      const dupIdx = next.indexOf(newCid);
+      if (dupIdx !== -1 && dupIdx !== idx) next[dupIdx] = next[idx];
+      next[idx] = newCid;
+      return next;
+    });
+  };
+
+  const cycleChar = (idx, dir) => {
+    const cur = chars[idx];
+    const i = CHARACTERS.findIndex(c => c.id === cur);
+    const n = (i + dir + CHARACTERS.length) % CHARACTERS.length;
+    setCharAt(idx, CHARACTERS[n].id);
+  };
+
+  return (
+    <div className="ms-wrap">
+      <div className="ms-inner">
+        <header className="ms-header">
+          <div className="ms-eyebrow mono">01 — NEW GAME</div>
+          <h1 className="ms-title serif">
+            Climb <span className="climb">↑</span>
+            <br/>
+            & Slide <span className="slide">↓</span>
+          </h1>
+          <p className="ms-sub">A modern take on a classic race. Roll dice, ride ladders, dodge chutes. First to 100 wins.</p>
+        </header>
+
+        {!mode && (
+          <div className="ms-modes">
+            <button className="ms-mode-card" onClick={() => setMode('multi')}>
+              <div className="ms-mode-icon">
+                <div className="stack">
+                  <span style={{background:'#e8583e'}}/>
+                  <span style={{background:'#2a8a5f'}}/>
+                  <span style={{background:'#e8b23e'}}/>
+                  <span style={{background:'#5b6cff'}}/>
+                </div>
+              </div>
+              <div>
+                <div className="ms-mode-title serif">Pass & Play</div>
+                <div className="ms-mode-desc">2–5 humans on one device</div>
+              </div>
+              <div className="ms-mode-arrow">→</div>
+            </button>
+            <button className="ms-mode-card" onClick={() => setMode('ai')}>
+              <div className="ms-mode-icon">
+                <Robot size={64} color="#1a1f2e" mood="happy"/>
+              </div>
+              <div>
+                <div className="ms-mode-title serif">Play BLIP</div>
+                <div className="ms-mode-desc">You vs. our friendly robot</div>
+              </div>
+              <div className="ms-mode-arrow">→</div>
+            </button>
+          </div>
+        )}
+
+        {mode === 'multi' && (
+          <div className="ms-config">
+            <div className="ms-field">
+              <label className="mono">HOW MANY PLAYERS</label>
+              <div className="ms-chips">
+                {[2,3,4,5].map(n => (
+                  <button
+                    key={n}
+                    className={`chip ${humanCount === n ? 'active' : ''}`}
+                    onClick={() => setHumanCount(n)}
+                  >{n}</button>
+                ))}
+              </div>
+            </div>
+            <div className="ms-field">
+              <label className="mono">PLAYERS & CHARACTERS</label>
+              <div className="ms-players">
+                {Array.from({length: humanCount}).map((_, i) => (
+                  <div key={i} className="ms-player-row setup-row">
+                    <div className="char-picker">
+                      <button className="cp-arrow" onClick={() => cycleChar(i, -1)} aria-label="Previous">‹</button>
+                      <div className="cp-stage" style={{ background: colorFor(chars[i]) + '22' }}>
+                        <Character charId={chars[i]} size={56} spin/>
+                      </div>
+                      <button className="cp-arrow" onClick={() => cycleChar(i, 1)} aria-label="Next">›</button>
+                    </div>
+                    <div className="setup-right">
+                      <input
+                        type="text"
+                        placeholder={`Player ${i+1}`}
+                        value={names[i]}
+                        maxLength={10}
+                        onChange={e => {
+                          const next = [...names];
+                          next[i] = e.target.value;
+                          setNames(next);
+                        }}
+                      />
+                      <div className="char-name mono">{(CHARACTERS.find(c => c.id === chars[i]) || {}).name?.toUpperCase()}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="ms-actions">
+              <button className="btn ghost" onClick={() => setMode(null)}>← Back</button>
+              <button className="btn primary" onClick={start}>Start game →</button>
+            </div>
+          </div>
+        )}
+
+        {mode === 'ai' && (
+          <div className="ms-config">
+            <div className="ms-ai-card">
+              <Robot size={96} color="#1a1f2e" mood="happy"/>
+              <div>
+                <div className="ms-ai-name serif">BLIP</div>
+                <div className="ms-ai-tagline mono">// a friendly rolling bot</div>
+                <div className="ms-ai-quote">"Beep boop — may the best climber win! I promise to cheer when you dodge a chute."</div>
+              </div>
+            </div>
+            <div className="ms-field">
+              <label className="mono">YOUR NAME & CHARACTER</label>
+              <div className="ai-name-row">
+                <input
+                  className="ms-name-input"
+                  type="text"
+                  value={playerName}
+                  maxLength={12}
+                  onChange={e => setPlayerName(e.target.value)}
+                />
+              </div>
+              <div className="char-gallery">
+                {CHARACTERS.map(c => (
+                  <button
+                    key={c.id}
+                    className={`char-tile ${myChar === c.id ? 'active' : ''}`}
+                    onClick={() => setMyChar(c.id)}
+                    style={{ '--ccolor': c.color }}
+                  >
+                    <Character charId={c.id} size={56} spin={myChar === c.id}/>
+                    <div className="char-tile-name mono">{c.name}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="ms-field">
+              <label className="mono">BLIP'S PERSONALITY</label>
+              <div className="ms-chips">
+                {[
+                  { id: 'easy', label: 'Friendly', desc: 'rolls slower, chats more' },
+                  { id: 'normal', label: 'Balanced', desc: 'a fair match' },
+                  { id: 'hard', label: 'Sharp', desc: 'rolls quick, talks trash' },
+                ].map(d => (
+                  <button
+                    key={d.id}
+                    className={`chip wide ${aiDifficulty === d.id ? 'active' : ''}`}
+                    onClick={() => setAiDifficulty(d.id)}
+                  >
+                    <span>{d.label}</span>
+                    <span className="chip-desc">{d.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="ms-actions">
+              <button className="btn ghost" onClick={() => setMode(null)}>← Back</button>
+              <button className="btn primary" onClick={start}>Start game →</button>
+            </div>
+          </div>
+        )}
+
+        <footer className="ms-footer mono">
+          <span>EST. 2026</span>
+          <span>·</span>
+          <span>100 SQUARES</span>
+          <span>·</span>
+          <span>10 CHUTES</span>
+          <span>·</span>
+          <span>8 LADDERS</span>
+        </footer>
+        <a
+          className="kofi-btn"
+          href="https://ko-fi.com/mikeyalessandro"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <span className="kofi-heart">♥</span>
+          <span>Enjoying the game? Buy me a coffee</span>
+        </a>
+      </div>
+
+      <style>{`
+        .ms-wrap {
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 40px 24px;
+          overflow-y: auto;
+        }
+        .ms-inner {
+          width: 100%;
+          max-width: 640px;
+          display: flex;
+          flex-direction: column;
+          gap: 32px;
+        }
+        .ms-header { display: flex; flex-direction: column; gap: 12px; }
+        .ms-eyebrow {
+          font-size: 12px;
+          letter-spacing: 0.15em;
+          color: var(--mute);
+        }
+        .ms-title {
+          font-size: clamp(48px, 8vw, 86px);
+          line-height: 0.9;
+          font-weight: 700;
+          letter-spacing: -0.04em;
+        }
+        .ms-title .climb { color: var(--accent-2); display: inline-block; transform: translateY(-4px); }
+        .ms-title .slide { color: var(--accent); display: inline-block; transform: translateY(4px); }
+        .ms-sub {
+          font-size: 16px;
+          color: var(--ink-2);
+          max-width: 440px;
+          line-height: 1.5;
+        }
+        .ms-modes {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .ms-mode-card {
+          display: flex;
+          align-items: center;
+          gap: 20px;
+          padding: 20px 24px;
+          background: white;
+          border: 1px solid rgba(26,31,46,0.08);
+          border-radius: 16px;
+          text-align: left;
+          transition: all 0.2s;
+          box-shadow: 0 1px 0 rgba(26,31,46,0.03), 0 4px 12px -6px rgba(26,31,46,0.08);
+        }
+        .ms-mode-card:hover {
+          transform: translateY(-2px);
+          border-color: var(--ink);
+          box-shadow: 0 4px 0 rgba(26,31,46,0.08), 0 8px 20px -6px rgba(26,31,46,0.2);
+        }
+        .ms-mode-icon {
+          width: 72px;
+          height: 72px;
+          border-radius: 14px;
+          background: var(--bg-2);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+        .ms-mode-title { font-size: 22px; font-weight: 700; }
+        .ms-mode-desc { color: var(--mute); font-size: 14px; margin-top: 2px; }
+        .ms-mode-arrow {
+          margin-left: auto;
+          font-size: 22px;
+          color: var(--mute);
+          transition: transform 0.2s;
+        }
+        .ms-mode-card:hover .ms-mode-arrow {
+          transform: translateX(4px);
+          color: var(--ink);
+        }
+        .stack {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 3px;
+          width: 40px; height: 40px;
+        }
+        .stack span {
+          border-radius: 50%;
+          box-shadow: inset 0 2px 2px rgba(255,255,255,0.4), inset 0 -2px 2px rgba(0,0,0,0.15);
+        }
+        .ms-config {
+          display: flex;
+          flex-direction: column;
+          gap: 24px;
+          padding: 28px;
+          background: white;
+          border-radius: 20px;
+          border: 1px solid rgba(26,31,46,0.08);
+        }
+        .ms-field { display: flex; flex-direction: column; gap: 10px; }
+        .ms-field label {
+          font-size: 11px;
+          letter-spacing: 0.15em;
+          color: var(--mute);
+        }
+        .ms-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+        .chip {
+          padding: 10px 16px;
+          border-radius: 10px;
+          background: var(--bg-2);
+          color: var(--ink);
+          font-weight: 600;
+          font-size: 15px;
+          transition: all 0.15s;
+          border: 1.5px solid transparent;
+        }
+        .chip:hover { background: #e0d6bf; }
+        .chip.active {
+          background: var(--ink);
+          color: var(--bg);
+          border-color: var(--ink);
+        }
+        .chip.wide {
+          flex: 1;
+          min-width: 140px;
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          padding: 12px 14px;
+          gap: 4px;
+          text-align: left;
+        }
+        .chip-desc { font-weight: 400; font-size: 11px; opacity: 0.65; font-family: 'Geist Mono', monospace; letter-spacing: 0.02em; }
+        .ms-players { display: flex; flex-direction: column; gap: 8px; }
+        .setup-row {
+          padding: 10px !important;
+          gap: 14px !important;
+        }
+        .char-picker {
+          display: flex; align-items: center; gap: 4px;
+          flex-shrink: 0;
+        }
+        .cp-arrow {
+          width: 24px; height: 24px;
+          border-radius: 50%;
+          background: rgba(0,0,0,0.06);
+          color: var(--ink);
+          font-size: 18px;
+          font-weight: 600;
+          display: flex; align-items: center; justify-content: center;
+          line-height: 1;
+        }
+        .cp-arrow:hover { background: var(--ink); color: var(--bg); }
+        .cp-stage {
+          width: 64px; height: 64px;
+          border-radius: 14px;
+          display: flex; align-items: center; justify-content: center;
+          transition: background 0.3s;
+        }
+        .setup-right { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        .char-name { font-size: 10px; letter-spacing: 0.15em; color: var(--mute); }
+        .char-gallery {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+          gap: 8px;
+          margin-top: 10px;
+        }
+        .char-tile {
+          display: flex; flex-direction: column; align-items: center; gap: 4px;
+          padding: 12px 6px 8px;
+          background: var(--bg-2);
+          border: 1.5px solid transparent;
+          border-radius: 12px;
+          transition: all 0.15s;
+        }
+        .char-tile:hover { background: #d8ccaf; transform: translateY(-1px); }
+        .char-tile.active {
+          background: color-mix(in oklab, var(--ccolor) 20%, white);
+          border-color: var(--ccolor);
+        }
+        .char-tile-name {
+          font-size: 10px;
+          letter-spacing: 0.1em;
+          color: var(--ink-2);
+          font-weight: 500;
+        }
+        .ms-player-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 8px 12px 8px 8px;
+          background: var(--bg-2);
+          border-radius: 12px;
+        }
+        .ms-player-row input, .ms-name-input {
+          flex: 1;
+          background: transparent;
+          border: none;
+          outline: none;
+          font: inherit;
+          font-size: 15px;
+          font-weight: 600;
+          color: var(--ink);
+          padding: 4px 0;
+        }
+        .ms-name-input {
+          padding: 12px 14px;
+          background: var(--bg-2);
+          border-radius: 10px;
+        }
+        .ms-ai-card {
+          display: flex;
+          align-items: center;
+          gap: 20px;
+          padding: 20px;
+          background: linear-gradient(135deg, #f7f1e4, #eae3d4);
+          border-radius: 16px;
+        }
+        .ms-ai-name { font-size: 26px; font-weight: 700; }
+        .ms-ai-tagline { font-size: 11px; color: var(--mute); letter-spacing: 0.1em; margin-top: 2px; }
+        .ms-ai-quote {
+          margin-top: 10px;
+          font-style: italic;
+          font-size: 14px;
+          color: var(--ink-2);
+          line-height: 1.4;
+          border-left: 2px solid var(--ink);
+          padding-left: 10px;
+        }
+        .ms-actions {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          margin-top: 4px;
+        }
+        .btn {
+          padding: 14px 20px;
+          border-radius: 12px;
+          font-weight: 600;
+          font-size: 15px;
+          transition: all 0.15s;
+        }
+        .btn.ghost { color: var(--mute); }
+        .btn.ghost:hover { color: var(--ink); }
+        .btn.primary {
+          background: var(--ink);
+          color: var(--bg);
+          padding: 14px 24px;
+          box-shadow: 0 2px 0 rgba(0,0,0,0.2);
+        }
+        .btn.primary:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 0 rgba(0,0,0,0.2);
+        }
+        .btn.primary:active {
+          transform: translateY(1px);
+          box-shadow: 0 0 0 rgba(0,0,0,0.2);
+        }
+        .ms-footer {
+          display: flex;
+          justify-content: center;
+          gap: 10px;
+          font-size: 10px;
+          letter-spacing: 0.12em;
+          color: var(--mute);
+        }
+        .kofi-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          align-self: center;
+          padding: 10px 16px;
+          border-radius: 999px;
+          background: #ff5e5b;
+          color: white;
+          text-decoration: none;
+          font-size: 13px;
+          font-weight: 600;
+          box-shadow: 0 2px 0 rgba(0,0,0,0.15), 0 6px 14px -6px rgba(255,94,91,0.5);
+          transition: transform 0.15s, box-shadow 0.15s;
+          margin-top: -18px;
+        }
+        .kofi-btn:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 4px 0 rgba(0,0,0,0.15), 0 10px 20px -6px rgba(255,94,91,0.6);
+        }
+        .kofi-heart {
+          display: inline-block;
+          animation: kofi-heart 1.4s ease-in-out infinite;
+        }
+        @keyframes kofi-heart {
+          0%, 100% { transform: scale(1); }
+          25% { transform: scale(1.25); }
+          50% { transform: scale(1); }
+          75% { transform: scale(1.15); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+window.ModeSelect = ModeSelect;
+window.PLAYER_COLORS = PLAYER_COLORS;
+
+
+// === app.jsx ===
+// Main game app — state machine + layout
+
+const { useState, useEffect, useRef, useCallback } = React;
+
+const BLIP_LINES = {
+  start: ["Beep! Let's roll.", "Oh boy, a new race!", "I've been practicing. Maybe.", "May the best bot win. (That's me.)"],
+  goodRoll: ["Nice one!", "Ooooh, six!", "That's the spirit!", "Big numbers!", "You're on fire.", "Not bad, human."],
+  badRoll: ["Just a one? Oof.", "Tough break.", "Rolled a two myself last time.", "The dice are fickle."],
+  ladder: ["UP you go! 🪜", "Ladder! Lucky.", "Smooth climb.", "Zoom zoom, to the top."],
+  chute: ["Wheeeeeee—down!", "Oh no, a slide!", "Gravity wins this round.", "I've been there. Literally."],
+  myTurn: ["My turn. *clicks*", "Processing dice physics...", "Rolling...", "Here goes my best shot.", "Bip bop, let's go."],
+  myLadder: ["HA! A ladder for me!", "Up I go!", "My circuits are tingling."],
+  myChute: ["Oof. Recalculating.", "A chute? Rude.", "I regret everything."],
+  win: ["GG! I won 🎉", "Beep boop, victory!", "Don't be sad — rematch?"],
+  lose: ["You got me!", "Well played, human.", "Rematch! Rematch!", "Impressive."],
+  near: ["You're almost there...", "One good roll from winning!", "I see you creeping up."],
+};
+
+function randLine(key) {
+  const arr = BLIP_LINES[key];
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function App() {
+  const [screen, setScreen] = useState('menu'); // menu | play | win
+  const [config, setConfig] = useState(null);
+
+  // ============== TWEAKABLE DEFAULTS ==============
+  const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+    "gameSpeed": 0.9,
+    "exactLanding": true,
+    "showHintArrows": true,
+    "confettiDensity": 60,
+    "accentColor": "#e8583e",
+    "boardBgMode": "cream",
+    "showBlipPanel": true,
+    "showActivityLog": true,
+    "boardScale": 1,
+    "diceShuffleMs": 350,
+    "tokenStepMs": 160,
+    "instantRolls": false,
+    "showGlidePath": false,
+    "rollButtonLabel": "Tap the dice to roll"
+  }/*EDITMODE-END*/;
+
+  const [tweaks, setTweaks] = useState(TWEAK_DEFAULTS);
+  const [tweakPanelOpen, setTweakPanelOpen] = useState(false);
+
+  const updateTweak = (key, val) => {
+    setTweaks(t => ({ ...t, [key]: val }));
+    try {
+      window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { [key]: val } }, '*');
+    } catch(e) {}
+  };
+
+  useEffect(() => {
+    const onMsg = (e) => {
+      const d = e.data || {};
+      if (d.type === '__activate_edit_mode') setTweakPanelOpen(true);
+      if (d.type === '__deactivate_edit_mode') setTweakPanelOpen(false);
+    };
+    window.addEventListener('message', onMsg);
+    // announce AFTER listener is attached
+    try { window.parent.postMessage({ type: '__edit_mode_available' }, '*'); } catch(e) {}
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  // Apply accent color as CSS var
+  useEffect(() => {
+    document.documentElement.style.setProperty('--accent', tweaks.accentColor);
+  }, [tweaks.accentColor]);
+
+  const handleStart = (cfg) => {
+    setConfig(cfg);
+    setScreen('play');
+  };
+
+  const handleQuit = () => {
+    setScreen('menu');
+    setConfig(null);
+  };
+
+  return (
+    <>
+      {screen === 'menu' && <ModeSelect onStart={handleStart}/>}
+      {screen === 'play' && <Game config={config} onQuit={handleQuit} tweaks={tweaks}/>}
+      {tweakPanelOpen && <TweaksPanel tweaks={tweaks} onChange={updateTweak} onClose={() => setTweakPanelOpen(false)} onReset={() => setTweaks(TWEAK_DEFAULTS)}/>}
+    </>
+  );
+}
+
+function TweaksPanel({ tweaks, onChange, onClose, onReset }) {
+  return (
+    <div className="tweaks-panel">
+      <div className="tw-header">
+        <div className="tw-title serif">Tweaks</div>
+        <button className="tw-close" onClick={onClose} aria-label="Close">×</button>
+      </div>
+      <div className="tw-body">
+        <div className="tw-group">
+          <div className="tw-group-label mono">PACE</div>
+          <TwRow label="Game speed">
+            <input type="range" min="0.3" max="3" step="0.1" value={tweaks.gameSpeed}
+              onChange={e => onChange('gameSpeed', parseFloat(e.target.value))}/>
+            <span className="tw-val mono">{tweaks.gameSpeed.toFixed(1)}×</span>
+          </TwRow>
+          <TwRow label="Dice shuffle (ms)">
+            <input type="range" min="0" max="2000" step="50" value={tweaks.diceShuffleMs}
+              onChange={e => onChange('diceShuffleMs', parseInt(e.target.value))}/>
+            <span className="tw-val mono">{tweaks.diceShuffleMs}</span>
+          </TwRow>
+          <TwToggle label="Instant rolls (no shuffle)" value={tweaks.instantRolls}
+            onChange={v => onChange('instantRolls', v)}/>
+        </div>
+
+        <div className="tw-group">
+          <div className="tw-group-label mono">RULES</div>
+          <TwToggle label="Must land exactly on 100" value={tweaks.exactLanding}
+            onChange={v => onChange('exactLanding', v)}/>
+        </div>
+
+        <div className="tw-group">
+          <div className="tw-group-label mono">BOARD</div>
+          <TwRow label="Theme">
+            <div className="tw-seg">
+              {['dark','light','cream'].map(v => (
+                <button key={v}
+                  className={`tw-seg-btn ${tweaks.boardBgMode === v ? 'active' : ''}`}
+                  onClick={() => onChange('boardBgMode', v)}>{v}</button>
+              ))}
+            </div>
+          </TwRow>
+          <TwRow label="Board scale">
+            <input type="range" min="0.7" max="1.15" step="0.01" value={tweaks.boardScale}
+              onChange={e => onChange('boardScale', parseFloat(e.target.value))}/>
+            <span className="tw-val mono">{tweaks.boardScale.toFixed(2)}</span>
+          </TwRow>
+          <TwToggle label="Show hint arrows on chute/ladder squares" value={tweaks.showHintArrows}
+            onChange={v => onChange('showHintArrows', v)}/>
+          <TwToggle label="Center glide highlight on slides" value={tweaks.showGlidePath}
+            onChange={v => onChange('showGlidePath', v)}/>
+        </div>
+
+        <div className="tw-group">
+          <div className="tw-group-label mono">STYLE</div>
+          <TwRow label="Accent color">
+            <div className="tw-swatches">
+              {['#e8583e','#2a8a5f','#e8b23e','#5b6cff','#a855a0','#1ac0c6','#ff6b9d'].map(c => (
+                <button key={c}
+                  className={`tw-swatch ${tweaks.accentColor === c ? 'active' : ''}`}
+                  style={{background: c}}
+                  onClick={() => onChange('accentColor', c)}
+                  aria-label={c}/>
+              ))}
+            </div>
+          </TwRow>
+          <TwRow label="Confetti density">
+            <input type="range" min="0" max="250" step="10" value={tweaks.confettiDensity}
+              onChange={e => onChange('confettiDensity', parseInt(e.target.value))}/>
+            <span className="tw-val mono">{tweaks.confettiDensity}</span>
+          </TwRow>
+        </div>
+
+        <div className="tw-group">
+          <div className="tw-group-label mono">HUD</div>
+          <TwToggle label="Show BLIP chat" value={tweaks.showBlipPanel}
+            onChange={v => onChange('showBlipPanel', v)}/>
+          <TwToggle label="Show activity log" value={tweaks.showActivityLog}
+            onChange={v => onChange('showActivityLog', v)}/>
+          <TwRow label="Roll prompt copy">
+            <input type="text" className="tw-text" value={tweaks.rollButtonLabel}
+              onChange={e => onChange('rollButtonLabel', e.target.value)}/>
+          </TwRow>
+        </div>
+
+        <div className="tw-footer">
+          <button className="tw-reset" onClick={onReset}>Reset to defaults</button>
+        </div>
+      </div>
+
+      <style>{`
+        .tweaks-panel {
+          position: fixed;
+          right: 20px;
+          bottom: 20px;
+          width: 340px;
+          max-height: calc(100vh - 40px);
+          background: white;
+          border-radius: 16px;
+          box-shadow:
+            0 24px 60px -12px rgba(26,31,46,0.35),
+            0 2px 0 rgba(26,31,46,0.06);
+          border: 1px solid rgba(26,31,46,0.1);
+          display: flex;
+          flex-direction: column;
+          z-index: 200;
+          font-size: 13px;
+          color: var(--ink);
+          animation: tw-slide 0.25s cubic-bezier(.34,1.2,.64,1);
+        }
+        @keyframes tw-slide {
+          from { transform: translateY(12px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+        .tw-header {
+          padding: 14px 16px;
+          border-bottom: 1px solid rgba(26,31,46,0.08);
+          display: flex; align-items: center; justify-content: space-between;
+        }
+        .tw-title { font-size: 20px; font-weight: 700; }
+        .tw-close {
+          width: 28px; height: 28px; border-radius: 50%;
+          font-size: 22px; line-height: 1;
+          color: var(--ink-2); background: transparent;
+          display: flex; align-items: center; justify-content: center;
+        }
+        .tw-close:hover { background: var(--bg-2); }
+        .tw-body {
+          padding: 14px 16px 8px;
+          overflow-y: auto;
+          flex: 1;
+        }
+        .tw-group {
+          margin-bottom: 18px;
+        }
+        .tw-group-label {
+          font-size: 10px;
+          letter-spacing: 0.15em;
+          color: var(--mute);
+          margin-bottom: 8px;
+        }
+        .tw-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 10px;
+          min-height: 28px;
+        }
+        .tw-row-label {
+          flex: 1;
+          font-size: 13px;
+        }
+        .tw-row-ctrl {
+          display: flex; align-items: center; gap: 8px;
+          flex-shrink: 0;
+        }
+        .tw-row input[type=range] {
+          width: 100px;
+          accent-color: var(--accent);
+        }
+        .tw-val {
+          font-size: 11px;
+          color: var(--mute);
+          min-width: 36px;
+          text-align: right;
+        }
+        .tw-text {
+          width: 150px;
+          font: inherit;
+          font-size: 12px;
+          border: 1px solid rgba(26,31,46,0.15);
+          border-radius: 6px;
+          padding: 4px 8px;
+          outline: none;
+        }
+        .tw-text:focus { border-color: var(--accent); }
+        .tw-toggle {
+          display: flex; align-items: center; gap: 10px;
+          margin-bottom: 10px;
+          cursor: pointer;
+        }
+        .tw-toggle-label { flex: 1; font-size: 13px; }
+        .tw-switch {
+          width: 34px; height: 20px;
+          background: rgba(26,31,46,0.18);
+          border-radius: 20px;
+          position: relative;
+          transition: background 0.2s;
+          flex-shrink: 0;
+        }
+        .tw-switch::after {
+          content: '';
+          position: absolute;
+          left: 2px; top: 2px;
+          width: 16px; height: 16px;
+          background: white;
+          border-radius: 50%;
+          transition: left 0.2s;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+        }
+        .tw-toggle.on .tw-switch { background: var(--accent); }
+        .tw-toggle.on .tw-switch::after { left: 16px; }
+        .tw-seg {
+          display: flex;
+          background: var(--bg-2);
+          border-radius: 8px;
+          padding: 2px;
+          gap: 2px;
+        }
+        .tw-seg-btn {
+          padding: 4px 10px;
+          font-size: 11px;
+          letter-spacing: 0.05em;
+          border-radius: 6px;
+          color: var(--ink-2);
+          text-transform: uppercase;
+        }
+        .tw-seg-btn.active {
+          background: white;
+          color: var(--ink);
+          box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+        }
+        .tw-swatches {
+          display: flex; gap: 6px;
+        }
+        .tw-swatch {
+          width: 22px; height: 22px;
+          border-radius: 50%;
+          border: 2px solid transparent;
+          box-shadow: inset 0 -2px 0 rgba(0,0,0,0.15);
+          transition: transform 0.1s;
+        }
+        .tw-swatch:hover { transform: scale(1.1); }
+        .tw-swatch.active {
+          border-color: var(--ink);
+          transform: scale(1.1);
+        }
+        .tw-footer {
+          padding-top: 6px;
+          border-top: 1px solid rgba(26,31,46,0.08);
+          display: flex; justify-content: flex-end;
+        }
+        .tw-reset {
+          font-size: 11px;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: var(--mute);
+          padding: 6px 10px;
+        }
+        .tw-reset:hover { color: var(--ink); }
+      `}</style>
+    </div>
+  );
+}
+
+function TwRow({ label, children }) {
+  return (
+    <div className="tw-row">
+      <div className="tw-row-label">{label}</div>
+      <div className="tw-row-ctrl">{children}</div>
+    </div>
+  );
+}
+
+function TwToggle({ label, value, onChange }) {
+  return (
+    <div className={`tw-toggle ${value ? 'on' : ''}`} onClick={() => onChange(!value)}>
+      <div className="tw-toggle-label">{label}</div>
+      <div className="tw-switch"/>
+    </div>
+  );
+}
+
+function Game({ config, onQuit, tweaks = {} }) {
+  const T = {
+    gameSpeed: tweaks.gameSpeed ?? 1,
+    exactLanding: tweaks.exactLanding ?? true,
+    showHintArrows: tweaks.showHintArrows ?? true,
+    confettiDensity: tweaks.confettiDensity ?? 60,
+    boardBgMode: tweaks.boardBgMode ?? 'dark',
+    showBlipPanel: tweaks.showBlipPanel ?? true,
+    showActivityLog: tweaks.showActivityLog ?? true,
+    boardScale: tweaks.boardScale ?? 1,
+    diceShuffleMs: tweaks.diceShuffleMs ?? 700,
+    tokenStepMs: tweaks.tokenStepMs ?? 160,
+    instantRolls: tweaks.instantRolls ?? false,
+    showGlidePath: tweaks.showGlidePath ?? true,
+    rollButtonLabel: tweaks.rollButtonLabel ?? 'Tap the dice to roll',
+  };
+  const scaleMs = (ms) => Math.max(20, Math.round(ms / T.gameSpeed));
+  const [positions, setPositions] = useState(config.players.map(() => 0));
+  const [current, setCurrent] = useState(0);
+  const [diceValue, setDiceValue] = useState(1);
+  const [rolling, setRolling] = useState(false);
+  const [phase, setPhase] = useState('waiting'); // waiting | rolling | moving | sliding | climbing | turnEnd | won
+  const [log, setLog] = useState([]);
+  const [blipMood, setBlipMood] = useState('happy');
+  const [blipLine, setBlipLine] = useState(() => randLine('start'));
+  const [winner, setWinner] = useState(null);
+  const [highlight, setHighlight] = useState(null);
+  const [confettiKey, setConfettiKey] = useState(0);
+
+  const aiDifficulty = config.aiDifficulty || 'normal';
+  const aiSpeed = scaleMs({ easy: 1600, normal: 1000, hard: 600 }[aiDifficulty]);
+
+  const addLog = (entry) => {
+    setLog(l => [entry, ...l].slice(0, 40));
+  };
+
+  const isAITurn = config.players[current]?.isAI;
+
+  // Animate token advancing one square at a time
+  const animateMove = async (playerIdx, fromSq, toSq) => {
+    let cur = fromSq;
+    while (cur < toSq) {
+      cur += 1;
+      setPositions(p => {
+        const next = [...p];
+        next[playerIdx] = cur;
+        return next;
+      });
+      await sleep(scaleMs(T.tokenStepMs));
+    }
+  };
+
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  const rollDice = async () => {
+    if (phase !== 'waiting') return;
+    setPhase('rolling');
+    setRolling(true);
+
+    // shuffle dice display
+    const baseShuffle = T.instantRolls ? 0 : T.diceShuffleMs;
+    const shuffleMs = isAITurn ? scaleMs(Math.max(500, aiSpeed * 0.6)) : scaleMs(baseShuffle);
+    if (shuffleMs > 0) {
+      const start = Date.now();
+      while (Date.now() - start < shuffleMs) {
+        setDiceValue(1 + Math.floor(Math.random() * 6));
+        await sleep(70);
+      }
+    }
+
+    const roll = 1 + Math.floor(Math.random() * 6);
+    setDiceValue(roll);
+    setRolling(false);
+
+    const player = config.players[current];
+    const from = positions[current];
+    let target = from + roll;
+
+    // Rule: exact landing (overshoot = stay) OR soft landing (overshoot = whatever fits; lands on 100 anyway)
+    if (target > 100) {
+      if (T.exactLanding) {
+        addLog({ type: 'bounce', player: player.name, roll });
+        if (player.isAI) {
+          setBlipMood('sad');
+          setBlipLine("Overshot 100! I stay put.");
+        }
+        await sleep(scaleMs(900));
+        endTurn();
+        return;
+      } else {
+        // bounce-back rule: reflect overshoot
+        target = 100 - (target - 100);
+        addLog({ type: 'roll', player: player.name, roll, from, to: target });
+      }
+    } else {
+      addLog({ type: 'roll', player: player.name, roll, from, to: target });
+    }
+
+    if (player.isAI) {
+      setBlipLine(roll >= 4 ? randLine('goodRoll') : randLine('badRoll'));
+      setBlipMood(roll >= 4 ? 'happy' : 'thinking');
+    }
+
+    // Move
+    setPhase('moving');
+    await animateMove(current, from, target);
+    await sleep(scaleMs(300));
+
+    // Check chute
+    if (CHUTES[target] !== undefined) {
+      const dest = CHUTES[target];
+      setHighlight(target);
+      await sleep(scaleMs(450));
+      setPhase('sliding');
+      addLog({ type: 'chute', player: player.name, from: target, to: dest });
+      if (player.isAI) {
+        setBlipLine(randLine('myChute'));
+        setBlipMood('sad');
+      } else if (isAITurn === false && config.players.some(p => p.isAI)) {
+        setBlipLine(randLine('chute'));
+        setBlipMood('thinking');
+      }
+      // animate slide: snap to dest with transition
+      setPositions(p => {
+        const next = [...p];
+        next[current] = dest;
+        return next;
+      });
+      await sleep(scaleMs(700));
+      setHighlight(null);
+      target = dest;
+    } else if (LADDERS[target] !== undefined) {
+      const dest = LADDERS[target];
+      setHighlight(target);
+      await sleep(scaleMs(450));
+      setPhase('climbing');
+      addLog({ type: 'ladder', player: player.name, from: target, to: dest });
+      if (player.isAI) {
+        setBlipLine(randLine('myLadder'));
+        setBlipMood('celebrating');
+      } else if (config.players.some(p => p.isAI)) {
+        setBlipLine(randLine('ladder'));
+        setBlipMood('happy');
+      }
+      // climb: step up one rung at a time for effect
+      let cur = target;
+      const step = dest > target ? 1 : -1;
+      while (cur !== dest) {
+        cur += step * 4;
+        if ((step > 0 && cur > dest) || (step < 0 && cur < dest)) cur = dest;
+        setPositions(p => {
+          const next = [...p];
+          next[current] = cur;
+          return next;
+        });
+        await sleep(scaleMs(140));
+      }
+      await sleep(scaleMs(400));
+      setHighlight(null);
+      target = dest;
+    }
+
+    // Win?
+    if (target === 100) {
+      setWinner(current);
+      setPhase('won');
+      setConfettiKey(k => k + 1);
+      if (player.isAI) {
+        setBlipLine(randLine('win'));
+        setBlipMood('celebrating');
+      } else if (config.players.some(p => p.isAI)) {
+        setBlipLine(randLine('lose'));
+        setBlipMood('sad');
+      }
+      return;
+    }
+
+    // "Near" taunt
+    if (target >= 90 && player.isAI === false && config.players.some(p => p.isAI)) {
+      if (Math.random() < 0.4) {
+        setBlipLine(randLine('near'));
+        setBlipMood('thinking');
+      }
+    }
+
+    await sleep(scaleMs(500));
+    endTurn();
+  };
+
+  const endTurn = () => {
+    setCurrent(c => (c + 1) % config.players.length);
+    setPhase('waiting');
+  };
+
+  // AI auto-rolls
+  useEffect(() => {
+    if (phase === 'waiting' && isAITurn && !winner) {
+      setBlipLine(randLine('myTurn'));
+      setBlipMood('thinking');
+      const t = setTimeout(() => { rollDice(); }, aiSpeed);
+      return () => clearTimeout(t);
+    }
+  }, [phase, current, winner]);
+
+  const playAgain = () => {
+    setPositions(config.players.map(() => 0));
+    setCurrent(0);
+    setDiceValue(1);
+    setPhase('waiting');
+    setLog([]);
+    setWinner(null);
+    setHighlight(null);
+    setBlipLine(randLine('start'));
+    setBlipMood('happy');
+  };
+
+  const curPlayer = config.players[current];
+  const hasAI = config.players.some(p => p.isAI);
+
+  return (
+    <div className="game-wrap">
+      <div className="game-inner">
+        {/* Sidebar */}
+        <aside className="sidebar">
+          <div className="sb-top">
+            <button className="icon-btn" onClick={onQuit} title="Quit">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 19l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </button>
+            <div className="sb-title serif">Climb & Slide</div>
+          </div>
+
+          {/* Players — sorted by rank */}
+          <div className="players-panel">
+            <div className="section-label mono">LEADERBOARD</div>
+            {(() => {
+              // compute rank: higher square = better; tie = original order
+              const ranked = config.players
+                .map((p, i) => ({ p, i, pos: positions[i] }))
+                .sort((a, b) => b.pos - a.pos || a.i - b.i);
+              // assign rank numbers (ties share rank)
+              let lastPos = null, lastRank = 0;
+              ranked.forEach((r, idx) => {
+                if (r.pos !== lastPos) { lastRank = idx + 1; lastPos = r.pos; }
+                r.rank = lastRank;
+              });
+              return ranked.map(({ p, i, rank }) => (
+              <div key={p.id} className={`player-row ${i === current && !winner ? 'active' : ''} ${winner === i ? 'winner' : ''}`}>
+                <div className={`rank-badge rank-${rank}`}>
+                  {rank === 1 ? '1st' : rank === 2 ? '2nd' : rank === 3 ? '3rd' : rank + 'th'}
+                </div>
+                {p.isAI ? (
+                  <div className="ai-avatar" style={{ boxShadow: i === current && !winner ? `0 0 0 3px var(--bg), 0 0 0 5px ${p.color}` : 'none' }}>
+                    <Robot size={36} color="#f7f1e4" mood={i === current && phase !== 'waiting' ? 'thinking' : blipMood}/>
+                  </div>
+                ) : p.charId ? (
+                  <div className="char-avatar" style={{
+                    background: p.color + '22',
+                    boxShadow: i === current && !winner ? `0 0 0 3px var(--bg), 0 0 0 5px ${p.color}` : 'none'
+                  }}>
+                    <Character charId={p.charId} size={40}/>
+                  </div>
+                ) : (
+                  <Avatar label={p.label} color={p.color} size={40} isCurrent={i === current && !winner}/>
+                )}
+                <div className="player-info">
+                  <div className="player-name">{p.name}{p.isAI && <span className="ai-tag mono">AI</span>}{i === current && !winner && <span className="turn-pill mono">TURN</span>}</div>
+                  <div className="player-pos mono">
+                    {positions[i] === 0 ? 'START' : `SQ. ${positions[i]}`}
+                  </div>
+                </div>
+                <div className="player-prog">
+                  <div className="prog-fill" style={{
+                    height: `${positions[i]}%`,
+                    background: p.color,
+                  }}/>
+                </div>
+              </div>
+              ));
+            })()}
+          </div>
+
+          {/* BLIP chat box */}
+          {hasAI && T.showBlipPanel && (
+            <div className="blip-panel">
+              <div className="blip-face">
+                <Robot size={54} color="#f7f1e4" mood={blipMood}/>
+              </div>
+              <div className="blip-bubble">
+                <div className="blip-name mono">BLIP</div>
+                <div className="blip-text">{blipLine}</div>
+              </div>
+            </div>
+          )}
+
+          {/* Log */}
+          {T.showActivityLog && (
+          <div className="log-panel">
+            <div className="section-label mono">ACTIVITY</div>
+            <div className="log-list">
+              {log.length === 0 && <div className="log-empty">Your rolls will appear here.</div>}
+              {log.map((e, i) => (
+                <div key={i} className={`log-entry ${e.type}`}>
+                  {e.type === 'roll' && <><b>{e.player}</b> rolled <span className="mono">{e.roll}</span> · {e.from}→{e.to}</>}
+                  {e.type === 'bounce' && <><b>{e.player}</b> rolled {e.roll} — too far, stayed put</>}
+                  {e.type === 'chute' && <><b>{e.player}</b> slid down a chute <span className="mono">{e.from}→{e.to}</span></>}
+                  {e.type === 'ladder' && <><b>{e.player}</b> climbed a ladder <span className="mono">{e.from}→{e.to}</span></>}
+                </div>
+              ))}
+            </div>
+          </div>
+          )}
+        </aside>
+
+        {/* Board area */}
+        <main className="board-area">
+          <div className="board-header">
+            <div>
+              <div className="section-label mono">{winner !== null ? 'GAME OVER' : isAITurn ? 'BLIP\'S TURN' : 'YOUR TURN'}</div>
+              <div className="turn-name serif">
+                {winner !== null ? (
+                  <>{config.players[winner].name} {config.players[winner].name === 'You' ? 'win' : 'wins'}!</>
+                ) : (
+                  <>{curPlayer.name}<span className="turn-dot" style={{background: curPlayer.color}}/></>
+                )}
+              </div>
+            </div>
+            <div className="rules-tag">
+              <span className="mono">{T.exactLanding ? 'ROLL EXACTLY TO 100' : 'BOUNCE BACK OFF 100'}</span>
+            </div>
+          </div>
+
+          <Board
+            players={config.players}
+            currentPlayerIdx={current}
+            tokenPositions={positions}
+            highlightedSquare={highlight}
+            tweaks={T}
+            phase={phase}
+          />
+
+          {/* Dice + Roll button */}
+          <div className="dice-area">
+            <div className="dice-slot">
+              <Dice
+                value={diceValue}
+                rolling={rolling}
+                onClick={rollDice}
+                disabled={phase !== 'waiting' || isAITurn || !!winner}
+              />
+            </div>
+            <div className="roll-info">
+              {!winner && phase === 'waiting' && !isAITurn && (
+                <>
+                  <div className="roll-prompt serif">{T.rollButtonLabel}</div>
+                  <div className="roll-hint mono">→ MOVE {diceValue} FROM SQ. {positions[current]}</div>
+                </>
+              )}
+              {!winner && phase === 'waiting' && isAITurn && (
+                <>
+                  <div className="roll-prompt serif">BLIP is thinking…</div>
+                  <div className="roll-hint mono">STAND BY</div>
+                </>
+              )}
+              {!winner && phase !== 'waiting' && (
+                <>
+                  <div className="roll-prompt serif">
+                    {phase === 'rolling' && 'Rolling…'}
+                    {phase === 'moving' && `Moving +${diceValue}`}
+                    {phase === 'sliding' && 'Sliding down! 🪢'}
+                    {phase === 'climbing' && 'Climbing up! 🪜'}
+                  </div>
+                  <div className="roll-hint mono">SQ. {positions[current]}</div>
+                </>
+              )}
+              {winner !== null && (
+                <>
+                  <div className="roll-prompt serif">🏆 Winner!</div>
+                  <button className="btn primary" onClick={playAgain}>Play again</button>
+                </>
+              )}
+            </div>
+          </div>
+        </main>
+      </div>
+
+      {/* Win overlay */}
+      {winner !== null && (
+        <WinOverlay
+          key={confettiKey}
+          winner={config.players[winner]}
+          onPlayAgain={playAgain}
+          onQuit={onQuit}
+          confettiCount={T.confettiDensity}
+        />
+      )}
+
+      <style>{`
+        .game-wrap {
+          min-height: 100vh;
+          padding: 20px;
+          display: flex;
+          align-items: flex-start;
+          justify-content: center;
+        }
+        .game-inner {
+          width: 100%;
+          max-width: 1280px;
+          min-height: calc(100vh - 40px);
+          display: grid;
+          grid-template-columns: 320px 1fr;
+          gap: 24px;
+          align-items: stretch;
+        }
+        @media (max-width: 900px) {
+          .game-inner { grid-template-columns: 1fr; grid-template-rows: auto 1fr; overflow-y: auto; }
+          .sidebar { max-height: none !important; position: static !important; }
+        }
+        .sidebar {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          padding: 18px;
+          background: white;
+          border-radius: 20px;
+          border: 1px solid rgba(26,31,46,0.08);
+          box-shadow: 0 4px 16px -8px rgba(26,31,46,0.1);
+          position: sticky;
+          top: 20px;
+          align-self: start;
+          max-height: calc(100vh - 40px);
+          overflow-y: auto;
+        }
+        .sidebar::-webkit-scrollbar { width: 6px; }
+        .sidebar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 3px; }
+        .sb-top { display: flex; align-items: center; gap: 10px; }
+        .sb-title { font-size: 20px; font-weight: 700; }
+        .icon-btn {
+          width: 32px; height: 32px;
+          border-radius: 8px;
+          background: var(--bg-2);
+          color: var(--ink);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .icon-btn:hover { background: #d8ccaf; }
+        .section-label {
+          font-size: 10px;
+          letter-spacing: 0.15em;
+          color: var(--mute);
+          margin-bottom: 6px;
+        }
+        .players-panel { display: flex; flex-direction: column; gap: 8px; }
+        .player-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 10px 12px 10px 10px;
+          border-radius: 12px;
+          background: var(--bg);
+          border: 1.5px solid transparent;
+          transition: all 0.25s;
+        }
+        .player-row.active {
+          background: white;
+          border-color: var(--ink);
+          box-shadow: 0 2px 0 rgba(26,31,46,0.08);
+          animation: row-glow 2s ease-in-out infinite;
+        }
+        @keyframes row-glow {
+          0%, 100% { box-shadow: 0 2px 0 rgba(26,31,46,0.08), 0 0 0 0 rgba(232,178,62,0); }
+          50% { box-shadow: 0 2px 0 rgba(26,31,46,0.08), 0 0 0 4px rgba(232,178,62,0.25); }
+        }
+        .player-row.winner {
+          background: #fff3a8;
+          border-color: var(--accent-3);
+          animation: winner-bounce 0.6s ease-in-out 2;
+        }
+        @keyframes winner-bounce {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-6px); }
+        }
+        .rank-badge {
+          font-family: 'Geist Mono', monospace;
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.05em;
+          padding: 4px 6px;
+          border-radius: 6px;
+          background: var(--bg-2);
+          color: var(--ink-2);
+          min-width: 30px;
+          text-align: center;
+          flex-shrink: 0;
+        }
+        .rank-badge.rank-1 { background: #e8b23e; color: #5a3e0e; box-shadow: 0 2px 0 rgba(232,178,62,0.4); }
+        .rank-badge.rank-2 { background: #c7c3b5; color: #3a352a; }
+        .rank-badge.rank-3 { background: #c89772; color: #3a2410; }
+        .char-avatar {
+          width: 44px; height: 44px;
+          border-radius: 12px;
+          display: flex; align-items: center; justify-content: center;
+          flex-shrink: 0;
+          transition: box-shadow 0.2s;
+        }
+        .turn-pill {
+          display: inline-block;
+          padding: 1px 5px;
+          border-radius: 4px;
+          font-size: 8px;
+          letter-spacing: 0.12em;
+          background: var(--accent-2);
+          color: white;
+          margin-left: 4px;
+        }
+        .ai-avatar {
+          width: 40px; height: 40px;
+          border-radius: 50%;
+          background: var(--ink);
+          display: flex; align-items: center; justify-content: center;
+          flex-shrink: 0;
+          transition: box-shadow 0.2s;
+        }
+        .player-info { flex: 1; min-width: 0; }
+        .player-name { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+        .ai-tag {
+          background: var(--ink);
+          color: var(--bg);
+          padding: 1px 5px;
+          border-radius: 4px;
+          font-size: 9px;
+          letter-spacing: 0.1em;
+        }
+        .player-pos {
+          font-size: 11px;
+          color: var(--mute);
+          letter-spacing: 0.05em;
+          margin-top: 2px;
+        }
+        .player-prog {
+          width: 6px;
+          height: 44px;
+          background: var(--bg-2);
+          border-radius: 3px;
+          overflow: hidden;
+          position: relative;
+          display: flex;
+          flex-direction: column-reverse;
+        }
+        .prog-fill {
+          width: 100%;
+          transition: height 0.4s cubic-bezier(.5,.1,.5,1.4);
+          border-radius: 3px;
+        }
+        .blip-panel {
+          display: flex;
+          gap: 10px;
+          padding: 14px;
+          background: var(--ink);
+          color: var(--bg);
+          border-radius: 14px;
+          position: relative;
+        }
+        .blip-face {
+          width: 54px; height: 54px;
+          flex-shrink: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .blip-bubble { flex: 1; min-width: 0; }
+        .blip-name {
+          font-size: 10px;
+          letter-spacing: 0.15em;
+          opacity: 0.55;
+        }
+        .blip-text {
+          font-size: 14px;
+          margin-top: 4px;
+          line-height: 1.4;
+        }
+        .log-panel { flex: 1; display: flex; flex-direction: column; min-height: 120px; }
+        .log-list {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          overflow-y: auto;
+          flex: 1;
+        }
+        .log-empty { font-size: 12px; color: var(--mute); padding: 8px 0; }
+        .log-entry {
+          font-size: 12px;
+          padding: 6px 10px;
+          background: var(--bg);
+          border-radius: 6px;
+          line-height: 1.4;
+        }
+        .log-entry b { font-weight: 600; }
+        .log-entry.chute { background: rgba(232,88,62,0.1); color: #a53a26; }
+        .log-entry.ladder { background: rgba(42,138,95,0.1); color: #1e6645; }
+
+        .board-area {
+          display: flex;
+          flex-direction: column;
+          gap: 18px;
+          align-items: center;
+          justify-content: flex-start;
+          min-height: 0;
+          padding-bottom: 24px;
+        }
+        .board-header {
+          width: 100%;
+          max-width: min(72vh, 720px);
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+        }
+        .turn-name {
+          font-size: 28px;
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .turn-dot {
+          display: inline-block;
+          width: 14px;
+          height: 14px;
+          border-radius: 50%;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .rules-tag {
+          font-size: 10px;
+          letter-spacing: 0.15em;
+          color: var(--mute);
+          padding: 6px 10px;
+          border: 1px dashed rgba(26,31,46,0.25);
+          border-radius: 8px;
+        }
+        .dice-area {
+          display: flex;
+          align-items: center;
+          gap: 24px;
+          width: 100%;
+          max-width: min(72vh, 720px);
+          padding: 22px 24px;
+          background: white;
+          border-radius: 18px;
+          border: 1px solid rgba(26,31,46,0.08);
+        }
+        .dice-slot {
+          width: 88px;
+          flex-shrink: 0;
+          padding-bottom: 8px;
+        }
+        .roll-info {
+          flex: 1;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 16px;
+        }
+        .roll-prompt { font-size: 20px; font-weight: 600; }
+        .turn-dot { animation: dot-pulse 1.2s ease-in-out infinite; }
+        @keyframes dot-pulse {
+          0%, 100% { transform: scale(1); box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+          50% { transform: scale(1.2); box-shadow: 0 0 0 4px rgba(255,255,255,0.5), 0 2px 6px rgba(0,0,0,0.3); }
+        }
+        .roll-hint { font-size: 11px; letter-spacing: 0.12em; color: var(--mute); }
+      `}</style>
+    </div>
+  );
+}
+
+function WinOverlay({ winner, onPlayAgain, onQuit, confettiCount = 60 }) {
+  // Confetti pieces
+  const pieces = Array.from({ length: confettiCount }).map((_, i) => ({
+    id: i,
+    x: Math.random() * 100,
+    delay: Math.random() * 0.5,
+    dur: 1.5 + Math.random() * 1.5,
+    color: PLAYER_COLORS[i % PLAYER_COLORS.length],
+    rot: Math.random() * 360,
+  }));
+
+  return (
+    <div className="win-overlay">
+      <div className="confetti">
+        {pieces.map(p => (
+          <span
+            key={p.id}
+            className="confetti-piece"
+            style={{
+              left: `${p.x}%`,
+              background: p.color,
+              animationDelay: `${p.delay}s`,
+              animationDuration: `${p.dur}s`,
+              transform: `rotate(${p.rot}deg)`,
+            }}
+          />
+        ))}
+      </div>
+      <div className="win-card">
+        <div className="win-eyebrow mono">CONGRATULATIONS</div>
+        <div className="win-avatar">
+          {winner.isAI ? (
+            <div style={{background: winner.color, borderRadius: '50%', padding: 14}}>
+              <Robot size={100} color="#f7f1e4" mood="celebrating"/>
+            </div>
+          ) : winner.charId ? (
+            <div style={{background: winner.color + '33', borderRadius: '50%', padding: 14}}>
+              <Character charId={winner.charId} size={100} spin/>
+            </div>
+          ) : (
+            <Avatar label={winner.label} color={winner.color} size={120}/>
+          )}
+        </div>
+        <h2 className="win-title serif">{winner.name} {winner.name === 'You' ? 'win' : 'wins'}!</h2>
+        <p className="win-sub">Reached square 100 — chutes be damned.</p>
+        <div className="win-actions">
+          <button className="btn ghost" onClick={onQuit}>Main menu</button>
+          <button className="btn primary" onClick={onPlayAgain}>Play again →</button>
+        </div>
+      </div>
+      <style>{`
+        .win-overlay {
+          position: fixed; inset: 0;
+          background: rgba(26,31,46,0.5);
+          backdrop-filter: blur(8px);
+          display: flex; align-items: center; justify-content: center;
+          z-index: 100;
+          animation: fadein 0.3s ease;
+          overflow-y: auto;
+          padding: 20px;
+        }
+        @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+        .win-card {
+          background: white;
+          border-radius: 24px;
+          padding: 40px;
+          display: flex; flex-direction: column; align-items: center;
+          gap: 14px;
+          max-width: 440px;
+          box-shadow: 0 24px 60px -12px rgba(0,0,0,0.5);
+          animation: pop 0.5s cubic-bezier(.34,1.56,.64,1);
+          position: relative;
+          z-index: 2;
+        }
+        @keyframes pop {
+          from { transform: scale(0.7); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+        .win-eyebrow {
+          font-size: 11px;
+          letter-spacing: 0.2em;
+          color: var(--mute);
+        }
+        .win-avatar { margin: 8px 0; }
+        .win-title {
+          font-size: 44px; font-weight: 700; text-align: center;
+          background: linear-gradient(90deg, #e8583e, #e8b23e, #2a8a5f, #5b6cff, #a855a0, #e8583e);
+          background-size: 300% 100%;
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+          animation: win-shimmer 3s linear infinite;
+        }
+        @keyframes win-shimmer {
+          to { background-position: 300% 0; }
+        }
+        .win-sub { color: var(--ink-2); font-size: 15px; text-align: center; }
+        .win-actions { display: flex; gap: 10px; margin-top: 16px; }
+        .confetti {
+          position: absolute; inset: 0;
+          pointer-events: none;
+          overflow: hidden;
+        }
+        .confetti-piece {
+          position: absolute;
+          top: -20px;
+          width: 10px; height: 16px;
+          border-radius: 2px;
+          animation: fall linear forwards;
+        }
+        @keyframes fall {
+          to {
+            transform: translateY(120vh) rotate(720deg);
+          }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+window.App = App;
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+
+
+  </script>
+</body>
+</html>
