@@ -1578,7 +1578,9 @@ function Dice({ value, rolling, onClick, disabled }) {
 
   // During roll: accumulate random full rotations for chaos; settle on the correct target for `value`.
   const [rollTick, setRollTick] = React.useState(0);
-  const [currentRot, setCurrentRot] = React.useState({ x: -20, y: 25, tx: 0, ty: 0, bounce: 0 });
+  // Initial pose matches the idle iso offsets (defined below) so the very first render shows
+  // the dice as a clean 3D object — no brief flat frame before the mount effect snaps it.
+  const [currentRot, setCurrentRot] = React.useState({ x: -22, y: 28, tx: 0, ty: 0, bounce: 0 });
   const wasRolling = React.useRef(false);
 
   // Idle-pose offsets: show 3 faces at once (front + top + left) for a clean 3D read at rest.
@@ -1654,14 +1656,10 @@ function Dice({ value, rolling, onClick, disabled }) {
     return () => raf && cancelAnimationFrame(raf);
   }, [rolling]);
 
-  // If value changes while idle (e.g. persisted last-roll after game state update), re-snap
-  // to present the new face at the idle isometric pose — prevents a stale/blank look.
-  React.useEffect(() => {
-    if (!rolling && !wasRolling.current) {
-      const target = faceRotations[value] || faceRotations[1];
-      setCurrentRot({ x: target.x + IDLE_OFFSET_X, y: target.y + IDLE_OFFSET_Y, tx: 0, ty: 0, bounce: 0 });
-    }
-  }, [value]);
+  // Note: we intentionally do NOT snap on value changes. The [rolling]-keyed effect handles
+  // all three lifecycle cases (initial mount, tumble start, settle-to-face). Adding a value-keyed
+  // snap here would race with the settle animation and clobber its captured `from` state,
+  // causing a visible jump at handover.
 
   const Pip = ({ r, c }) => (
     <span className="d3-pip" style={{ gridRow: r, gridColumn: c }}/>
@@ -1885,9 +1883,10 @@ function Dice({ value, rolling, onClick, disabled }) {
     outerTransform = `translate(${phys.x}px, ${phys.y}px)`;
     outerTransition = 'none';
   } else if (phys.mode === 'resting') {
-    // Land softly: microscopic translate adjustment to sell "settle on the table"
+    // Same position as last flying frame — but we pre-warm the spring transition so the
+    // subsequent transform change (→ home) animates smoothly, never snaps.
     outerTransform = `translate(${phys.x}px, ${phys.y}px)`;
-    outerTransition = 'none';
+    outerTransition = 'transform 520ms cubic-bezier(.34,1.26,.64,1)';
   } else if (phys.mode === 'returning') {
     outerTransform = `translate(0, 0) scale(1)`;
     outerTransition = 'transform 520ms cubic-bezier(.34,1.26,.64,1)';
