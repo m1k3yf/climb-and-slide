@@ -1581,18 +1581,26 @@ function Dice({ value, rolling, onClick, disabled }) {
   const [currentRot, setCurrentRot] = React.useState({ x: -20, y: 25, tx: 0, ty: 0, bounce: 0 });
   const wasRolling = React.useRef(false);
 
+  // Idle-pose offsets: show 3 faces at once (front + top + left) for a clean 3D read at rest.
+  // Applied on initial snap AND as the end point of the settle animation.
+  const IDLE_OFFSET_X = -22;
+  const IDLE_OFFSET_Y = 28;
+
+  // Value is read via a ref so the tumble effect doesn't restart when the parent rapidly
+  // cycles `value` during the shuffle. Only `rolling` transitions drive the animation phases.
+  const valueRef = React.useRef(value);
+  React.useEffect(() => { valueRef.current = value; }, [value]);
+
   React.useEffect(() => {
     let raf;
     if (rolling) {
       wasRolling.current = true;
-      // 3D tumble: continuously rotate X and Y with an exponential speed decay so the dice
-      // visually slows down as it approaches rest (matches real-world physics of a die rolling
-      // on a table). Always preserves the 3D cube — no 2D flattening.
+      // 3D tumble: rotate X and Y with exponential decay. Always preserves the 3D cube.
       const start = performance.now();
       const startRot = currentRot;
-      const vx0 = 780 + Math.random() * 160;  // deg/s on X axis
-      const vy0 = 920 + Math.random() * 180;  // deg/s on Y axis
-      const tau = 0.75;                        // decay time constant (seconds)
+      const vx0 = 780 + Math.random() * 160;
+      const vy0 = 920 + Math.random() * 180;
+      const tau = 0.75;
       let lastT = start;
       let accX = 0, accY = 0;
       const tick = (now) => {
@@ -1600,14 +1608,11 @@ function Dice({ value, rolling, onClick, disabled }) {
         lastT = now;
         const t = (now - start) / 1000;
         const decay = Math.exp(-t / tau);
-        // Integrate angular velocity → rotation this frame
         accX += vx0 * decay * dt;
         accY += vy0 * decay * dt;
         const x = startRot.x + accX + Math.sin(t * 11) * 4;
         const y = startRot.y + accY + Math.cos(t * 8) * 5;
-        // Decay the airborne bounce (large at start, zero by ~1s)
         const bounce = Math.max(0, (1 - Math.min(1, t / 1.0))) * 12;
-        // Gentle jitter translation — kept small so the cube feels like a solid object, not a noisy blob
         const tx = Math.sin(t * 14) * 2.2;
         const ty = Math.cos(t * 11) * 1.8;
         setCurrentRot({ x, y, tx, ty, bounce });
@@ -1615,24 +1620,19 @@ function Dice({ value, rolling, onClick, disabled }) {
       };
       raf = requestAnimationFrame(tick);
     } else if (wasRolling.current) {
-      // Clean landing: rotate to the exact target face. Use a smooth cubic-bezier-like decel
-      // with a tiny overshoot so the cube "pops" into place like it lightly bounced on a surface.
+      // Clean landing at the isometric pose so the rolled face + two neighbors are always visible.
       wasRolling.current = false;
-      const target = faceRotations[value] || faceRotations[1];
+      const target = faceRotations[valueRef.current] || faceRotations[1];
       const from = currentRot;
-      // Pick final rotation close to current but landing on target (plus one extra full rotation
-      // so the settle has visible motion even if the cube is already near the target face).
-      const finalX = Math.round(from.x / 360) * 360 + target.x + 360;
-      const finalY = Math.round(from.y / 360) * 360 + target.y + 360;
+      // Land at target + idle iso offset so the cube never ends staring flat at the camera.
+      const finalX = Math.round(from.x / 360) * 360 + target.x + 360 + IDLE_OFFSET_X;
+      const finalY = Math.round(from.y / 360) * 360 + target.y + 360 + IDLE_OFFSET_Y;
       const startTime = performance.now();
       const dur = 900;
       const tick = (now) => {
         const p = Math.min(1, (now - startTime) / dur);
-        // easeOutQuint: smooth decel, no jitter
-        const e = 1 - Math.pow(1 - p, 5);
-        // Final overshoot wiggle on the approach angle (small, ≤ 6°) to sell the "tap, tap" settle
+        const e = 1 - Math.pow(1 - p, 5); // easeOutQuint
         const wobble = p > 0.75 ? Math.sin((p - 0.75) / 0.25 * Math.PI * 2) * 6 * (1 - p) : 0;
-        // Table-bounce: dice drops slightly on first contact, bounces up, settles
         const tableBounce = p > 0.6
           ? Math.abs(Math.sin((p - 0.6) / 0.4 * Math.PI * 1.5)) * 7 * (1 - p) * (1 - p)
           : 0;
@@ -1647,12 +1647,21 @@ function Dice({ value, rolling, onClick, disabled }) {
       };
       raf = requestAnimationFrame(tick);
     } else {
-      // Not rolling and never rolled: snap to face value at the default presentation angle
-      const target = faceRotations[value] || faceRotations[1];
-      setCurrentRot(c => ({ ...c, x: target.x - 20, y: target.y + 25, tx: 0, ty: 0, bounce: 0 }));
+      // Initial render (or idle refresh): snap to face value at the isometric pose.
+      const target = faceRotations[valueRef.current] || faceRotations[1];
+      setCurrentRot({ x: target.x + IDLE_OFFSET_X, y: target.y + IDLE_OFFSET_Y, tx: 0, ty: 0, bounce: 0 });
     }
     return () => raf && cancelAnimationFrame(raf);
-  }, [rolling, value]);
+  }, [rolling]);
+
+  // If value changes while idle (e.g. persisted last-roll after game state update), re-snap
+  // to present the new face at the idle isometric pose — prevents a stale/blank look.
+  React.useEffect(() => {
+    if (!rolling && !wasRolling.current) {
+      const target = faceRotations[value] || faceRotations[1];
+      setCurrentRot({ x: target.x + IDLE_OFFSET_X, y: target.y + IDLE_OFFSET_Y, tx: 0, ty: 0, bounce: 0 });
+    }
+  }, [value]);
 
   const Pip = ({ r, c }) => (
     <span className="d3-pip" style={{ gridRow: r, gridColumn: c }}/>
@@ -1698,25 +1707,8 @@ function Dice({ value, rolling, onClick, disabled }) {
 
   React.useEffect(() => () => cancelTimers(), []);
 
-  // Auto-start physics when `rolling` becomes true and no physics is already underway
-  // (i.e. AI-triggered rolls or any programmatic roll — gives the same "dice on a table" feel).
-  const prevRollingRef = React.useRef(false);
-  React.useEffect(() => {
-    if (rolling && !prevRollingRef.current && phys.mode === 'idle' && !drag.active) {
-      // Capture the dice's current screen position for wall-bounce math
-      const btn = document.querySelector('.dice3d');
-      if (btn) {
-        const r = btn.getBoundingClientRect();
-        diceBoxRef.current = { cx: r.left + r.width / 2, cy: r.top + r.height / 2, w: r.width, h: r.height };
-      }
-      const angle = Math.random() * Math.PI * 2;
-      const mag = 850 + Math.random() * 550;
-      const vx = Math.cos(angle) * mag;
-      const vy = Math.sin(angle) * mag - 300;
-      startPhysics(0, 0, vx, vy);
-    }
-    prevRollingRef.current = rolling;
-  }, [rolling]);
+  // Programmatic rolls (AI turn, etc.) roll in place — no toss. Only a user's real drag/flick
+  // triggers the physics motion. This keeps the home slot occupied and the dice always visible.
 
   const onPointerDown = (e) => {
     if (!canInteract) return;
@@ -1825,19 +1817,19 @@ function Dice({ value, rolling, onClick, disabled }) {
 
       const speed = Math.hypot(p.vx, p.vy);
       const elapsed = (now - p.startT) / 1000;
-      // Settle when the dice is nearly stopped or we hit the physics time limit
-      if ((speed < 22 && elapsed > 0.35) || elapsed > 1.6) {
+      // Settle when the dice is nearly stopped or we hit the physics time limit.
+      // Briefly "plant" at the landing spot (250ms so the user registers the impact), then
+      // spring home — the rolled face will be clearly visible at home for the 2s hold.
+      if ((speed < 22 && elapsed > 0.35) || elapsed > 1.4) {
         p.running = false;
         rafRef.current = null;
-        // Enter resting state at the final landing spot; face will settle via rolling=false from parent
         setPhys({ mode: 'resting', x: p.x, y: p.y, rotZ: p.rotZ });
-        // After 2 seconds of display, animate back to home
         restTimerRef.current = setTimeout(() => {
           setPhys({ mode: 'returning', x: 0, y: 0, rotZ: 0 });
           returnTimerRef.current = setTimeout(() => {
             setPhys({ mode: 'idle', x: 0, y: 0, rotZ: 0 });
           }, 520);
-        }, 2000);
+        }, 250);
         return;
       }
       rafRef.current = requestAnimationFrame(step);
@@ -1853,27 +1845,27 @@ function Dice({ value, rolling, onClick, disabled }) {
     setDrag({ active: false, dx: 0, dy: 0 });
     if (!didRelease || !canInteract) return;
 
-    // Determine initial velocity for physics sim
+    // TAP — user just clicked/pressed, didn't drag or flick. Roll in place, no physics movement.
+    // The inner cube will tumble-and-settle on the face via the rolling→false transition.
+    const isTap = dist < 8 && speed < 200;
+    if (isTap) {
+      onClick?.();
+      return;
+    }
+
+    // THROW — user dragged and/or flicked. Use real physics to toss the dice across the screen.
     let launchVx, launchVy;
     if (speed > 200) {
       // Real flick: use measured velocity directly
       launchVx = vx;
       launchVy = vy;
-    } else if (dist > 6) {
-      // Held-then-released: fling in drag direction with distance-derived magnitude
+    } else {
+      // Held-and-released: fling in drag direction with distance-derived magnitude
       const mag = Math.max(600, dist * 14);
       launchVx = (dx / dist) * mag;
       launchVy = (dy / dist) * mag;
-    } else {
-      // Simple tap: random direction roll with moderate energy
-      const angle = Math.random() * Math.PI * 2;
-      const mag = 700 + Math.random() * 500;
-      launchVx = Math.cos(angle) * mag;
-      launchVy = Math.sin(angle) * mag - 250; // slight upward bias so it "lifts" off the table
     }
-
     startPhysics(dx, dy, launchVx, launchVy);
-    // Trigger the actual roll — face will settle when parent sets rolling=false
     onClick?.();
   };
 
