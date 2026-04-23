@@ -74,15 +74,16 @@
 const CHUTES_LIST = [
   { from: 98, to: 78, color: '#1ac0c6' },  // turquoise
   { from: 93, to: 73, color: '#ffc93d' },  // sunshine yellow
-  { from: 87, to: 24, color: '#ff7a3d' },  // coral orange (the big one)
+  { from: 87, to: 24, color: '#ff7a3d', spiral: true },  // coral orange — spiral tube slide
   { from: 64, to: 60, color: '#7ed957' },  // lime green
   { from: 62, to: 19, color: '#3da0ff' },  // sky blue
   { from: 56, to: 53, color: '#c77dff' },  // lavender
-  { from: 49, to: 11, color: '#00c2a8' },  // teal
+  { from: 49, to: 11, color: '#9b5cff', portal: true },  // random-transport PORTAL
   { from: 47, to: 26, color: '#ff4d6d' },  // watermelon
   { from: 16, to: 6,  color: '#f7a824' },  // mango
 ];
 const CHUTES = Object.fromEntries(CHUTES_LIST.map(c => [c.from, c.to]));
+const PORTAL_SQUARES = new Set(CHUTES_LIST.filter(c => c.portal).map(c => c.from));
 
 const LADDERS_LIST = [
   { from: 4,  to: 14, color: '#e8b23e' },  // gold
@@ -143,6 +144,7 @@ function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, t
             const isEnd = n === 100;
             const isChute = n in CHUTES;
             const isLadder = n in LADDERS;
+            const isPortal = PORTAL_SQUARES.has(n);
             const isHighlight = highlightedSquare === n;
             return (
               <div
@@ -153,7 +155,8 @@ function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, t
                 <span className="sq-num mono">{n}</span>
                 {isStart && <span className="sq-tag">START</span>}
                 {isEnd && <span className="sq-tag gold">FINISH</span>}
-                {isChute && showHintArrows && <span className="sq-dot chute" title={`Chute to ${CHUTES[n]}`}>▾</span>}
+                {isChute && !isPortal && showHintArrows && <span className="sq-dot chute" title={`Chute to ${CHUTES[n]}`}>▾</span>}
+                {isPortal && showHintArrows && <span className="sq-dot portal" title="Random transport portal">✦</span>}
                 {isLadder && showHintArrows && <span className="sq-dot ladder" title={`Ladder to ${LADDERS[n]}`}>▴</span>}
               </div>
             );
@@ -248,7 +251,192 @@ function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, t
           })}
 
           {/* ======== CHUTES as PLAYGROUND SLIDES (open curved slides) ======== */}
-          {CHUTES_LIST.map(({ from, to, color }) => {
+          {CHUTES_LIST.map(({ from, to, color, spiral, portal }) => {
+            const shadeHex = (hex, amt) => {
+              const n = parseInt(hex.slice(1), 16);
+              const r = Math.max(0, Math.min(255, ((n >> 16) & 255) + amt));
+              const g = Math.max(0, Math.min(255, ((n >> 8) & 255) + amt));
+              const bl = Math.max(0, Math.min(255, (n & 255) + amt));
+              return `rgb(${r|0},${g|0},${bl|0})`;
+            };
+            if (portal) {
+              const p = squareToPct(+from);
+              const uidP = `portal-${from}`;
+              const cL = shadeHex(color, 90);
+              const cM = color;
+              const cD = shadeHex(color, -40);
+              const cDD = shadeHex(color, -80);
+              return (
+                <g key={'p' + from}>
+                  <defs>
+                    <radialGradient id={`${uidP}-core`} cx="0.5" cy="0.5" r="0.55">
+                      <stop offset="0%" stopColor="#fff" stopOpacity="1"/>
+                      <stop offset="18%" stopColor={cL} stopOpacity="0.95"/>
+                      <stop offset="55%" stopColor={cM} stopOpacity="0.85"/>
+                      <stop offset="90%" stopColor={cD} stopOpacity="0.5"/>
+                      <stop offset="100%" stopColor={cDD} stopOpacity="0"/>
+                    </radialGradient>
+                    <radialGradient id={`${uidP}-ring`} cx="0.5" cy="0.5" r="0.5">
+                      <stop offset="0%" stopColor={cL} stopOpacity="0"/>
+                      <stop offset="75%" stopColor={cM} stopOpacity="0.7"/>
+                      <stop offset="100%" stopColor={cDD} stopOpacity="0"/>
+                    </radialGradient>
+                  </defs>
+                  {/* cast shadow */}
+                  <ellipse cx={p.x + 0.8} cy={p.y + 1.2} rx="5" ry="1.5" fill="#000" opacity="0.3" filter="url(#castShadowSoft)"/>
+                  {/* outer ring */}
+                  <circle cx={p.x} cy={p.y} r="4.4" fill={`url(#${uidP}-ring)`}/>
+                  {/* swirl arms */}
+                  <g style={{ transformOrigin: `${p.x}px ${p.y}px`, animation: 'portal-spin 4s linear infinite' }}>
+                    {[0, 60, 120, 180, 240, 300].map((deg, i) => (
+                      <path
+                        key={i}
+                        d={`M ${p.x} ${p.y} m -0.4 0 a 3.4 3.4 0 0 1 3.4 -3.4`}
+                        transform={`rotate(${deg} ${p.x} ${p.y})`}
+                        fill="none"
+                        stroke={cL}
+                        strokeWidth="0.55"
+                        strokeLinecap="round"
+                        opacity="0.85"
+                      />
+                    ))}
+                  </g>
+                  {/* inner counter-rotating swirl */}
+                  <g style={{ transformOrigin: `${p.x}px ${p.y}px`, animation: 'portal-spin-rev 2.5s linear infinite' }}>
+                    {[30, 150, 270].map((deg, i) => (
+                      <path
+                        key={i}
+                        d={`M ${p.x} ${p.y} m -0.3 0 a 2.2 2.2 0 0 1 2.2 -2.2`}
+                        transform={`rotate(${deg} ${p.x} ${p.y})`}
+                        fill="none"
+                        stroke="#fff"
+                        strokeWidth="0.45"
+                        strokeLinecap="round"
+                        opacity="0.9"
+                      />
+                    ))}
+                  </g>
+                  {/* glowing core */}
+                  <circle cx={p.x} cy={p.y} r="3.4" fill={`url(#${uidP}-core)`}
+                    style={{ animation: 'portal-pulse 1.6s ease-in-out infinite' }}/>
+                  {/* star specks orbiting */}
+                  <g style={{ transformOrigin: `${p.x}px ${p.y}px`, animation: 'portal-spin 3s linear infinite' }}>
+                    {[0, 72, 144, 216, 288].map((deg, i) => {
+                      const rad = 3.9;
+                      const ang = deg * Math.PI / 180;
+                      return (
+                        <circle key={i}
+                          cx={p.x + Math.cos(ang) * rad}
+                          cy={p.y + Math.sin(ang) * rad}
+                          r="0.35" fill="#fff" opacity="0.95"/>
+                      );
+                    })}
+                  </g>
+                </g>
+              );
+            }
+            if (spiral) {
+              // Render as a coiled spring / slinky — series of alternating front+back arches
+              const a = squareToPct(+from);
+              const b = squareToPct(+to);
+              const dx = b.x - a.x, dy = b.y - a.y;
+              const len = Math.hypot(dx, dy);
+              const nxAx = -dy / len, nyAx = dx / len; // unit normal to path (perpendicular axis)
+              const uidS = `sp-${from}`;
+              const cL = shadeHex(color, 80);
+              const cM = color;
+              const cD = shadeHex(color, -50);
+              const cDD = shadeHex(color, -90);
+              const numLoops = 5;
+              const archR = 4.5;    // arch rise (perpendicular to main axis)
+              const tubeW = 2.6;    // stroke thickness
+              // Build the segment boundary points along the axis: 2 segments per loop (one front arch + one back arch)
+              const segs = numLoops * 2;
+              const pts = [];
+              for (let i = 0; i <= segs; i++) {
+                const t = i / segs;
+                pts.push({ x: a.x + dx * t, y: a.y + dy * t });
+              }
+              const arches = [];
+              for (let i = 0; i < segs; i++) {
+                const s = pts[i];
+                const e = pts[i + 1];
+                const isFront = i % 2 === 0; // alternate front/back
+                const sign = isFront ? -1 : 1; // flip which side of axis the arch bulges to
+                const midAxisX = (s.x + e.x) / 2;
+                const midAxisY = (s.y + e.y) / 2;
+                const controlX = midAxisX + sign * nxAx * archR;
+                const controlY = midAxisY + sign * nyAx * archR;
+                arches.push({ s, e, ctrl: { x: controlX, y: controlY }, isFront });
+              }
+              return (
+                <g key={'s' + from}>
+                  <defs>
+                    <linearGradient id={`${uidS}-tube`} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={cL}/>
+                      <stop offset="45%" stopColor={cM}/>
+                      <stop offset="100%" stopColor={cD}/>
+                    </linearGradient>
+                  </defs>
+                  {/* Cast shadow along the main axis */}
+                  <g transform="translate(1.5 2.2)" opacity="0.35" filter="url(#castShadowHeavy)">
+                    {arches.map((ar, i) => (
+                      <path key={'shd' + i}
+                        d={`M ${ar.s.x} ${ar.s.y} Q ${ar.ctrl.x} ${ar.ctrl.y} ${ar.e.x} ${ar.e.y}`}
+                        fill="none" stroke="#000" strokeWidth={tubeW + 0.4} strokeLinecap="round"/>
+                    ))}
+                  </g>
+                  {/* BACK arches first (drawn dimmer, behind the spine) */}
+                  {arches.filter(a => !a.isFront).map((ar, i) => (
+                    <g key={'bk' + i}>
+                      <path
+                        d={`M ${ar.s.x} ${ar.s.y} Q ${ar.ctrl.x} ${ar.ctrl.y} ${ar.e.x} ${ar.e.y}`}
+                        fill="none" stroke={cDD} strokeWidth={tubeW + 0.5} strokeLinecap="round" opacity="0.85"/>
+                      <path
+                        d={`M ${ar.s.x} ${ar.s.y} Q ${ar.ctrl.x} ${ar.ctrl.y} ${ar.e.x} ${ar.e.y}`}
+                        fill="none" stroke={cD} strokeWidth={tubeW - 0.3} strokeLinecap="round"/>
+                    </g>
+                  ))}
+                  {/* Central spine (peeking between coils) */}
+                  <line x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                    stroke={cDD} strokeWidth="0.5" strokeLinecap="round" opacity="0.45"/>
+                  {/* FRONT arches over the top — brighter, thicker, with highlight */}
+                  {arches.filter(a => a.isFront).map((ar, i) => (
+                    <g key={'fr' + i}>
+                      {/* tube outline */}
+                      <path
+                        d={`M ${ar.s.x} ${ar.s.y} Q ${ar.ctrl.x} ${ar.ctrl.y} ${ar.e.x} ${ar.e.y}`}
+                        fill="none" stroke={cDD} strokeWidth={tubeW + 0.6} strokeLinecap="round"/>
+                      {/* tube body */}
+                      <path
+                        d={`M ${ar.s.x} ${ar.s.y} Q ${ar.ctrl.x} ${ar.ctrl.y} ${ar.e.x} ${ar.e.y}`}
+                        fill="none" stroke={`url(#${uidS}-tube)`} strokeWidth={tubeW} strokeLinecap="round"/>
+                      {/* highlight sheen */}
+                      <path
+                        d={`M ${ar.s.x} ${ar.s.y} Q ${ar.ctrl.x} ${ar.ctrl.y} ${ar.e.x} ${ar.e.y}`}
+                        fill="none" stroke="#fff" strokeWidth="0.5" strokeLinecap="round" opacity="0.6"
+                        transform={`translate(0 -0.3)`}/>
+                    </g>
+                  ))}
+                  {/* Entry funnel at top */}
+                  <g transform={`translate(${a.x} ${a.y})`}>
+                    <ellipse cx="0.3" cy="0.8" rx={archR * 0.8} ry={archR * 0.35} fill="#000" opacity="0.3" filter="url(#castShadowSoft)"/>
+                    <ellipse cx="0" cy="0.2" rx={archR * 0.75} ry={archR * 0.4} fill={cDD}/>
+                    <ellipse cx="0" cy="0" rx={archR * 0.75} ry={archR * 0.4} fill={`url(#${uidS}-tube)`} stroke={cDD} strokeWidth="0.25"/>
+                    <ellipse cx="0" cy="-0.1" rx={archR * 0.52} ry={archR * 0.26} fill={cDD} opacity="0.85"/>
+                    <ellipse cx="-0.8" cy="-0.5" rx={archR * 0.3} ry={archR * 0.08} fill="#fff" opacity="0.55"/>
+                  </g>
+                  {/* Exit funnel at bottom */}
+                  <g transform={`translate(${b.x} ${b.y})`}>
+                    <ellipse cx="0.3" cy="0.8" rx={archR * 0.85} ry={archR * 0.35} fill="#000" opacity="0.35" filter="url(#castShadowSoft)"/>
+                    <ellipse cx="0" cy="0.2" rx={archR * 0.85} ry={archR * 0.45} fill={cDD}/>
+                    <ellipse cx="0" cy="0" rx={archR * 0.85} ry={archR * 0.45} fill={`url(#${uidS}-tube)`} stroke={cDD} strokeWidth="0.25"/>
+                    <ellipse cx="0" cy="-0.1" rx={archR * 0.6} ry={archR * 0.28} fill={cDD} opacity="0.85"/>
+                    <ellipse cx="-0.9" cy="-0.55" rx={archR * 0.35} ry={archR * 0.09} fill="#fff" opacity="0.55"/>
+                  </g>
+                </g>
+              );
+            }
             const a = squareToPct(+from);  // TOP of slide (high square)
             const b = squareToPct(+to);    // BOTTOM exit (low square)
             const dx = b.x - a.x, dy = b.y - a.y;
@@ -460,10 +648,11 @@ function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, t
             const isMoving = isCurrent && phase === 'moving';
             const isClimbing = isCurrent && phase === 'climbing';
             const isSliding = isCurrent && phase === 'sliding';
+            const isPortaling = isCurrent && phase === 'portaling';
             return (
               <div
                 key={p.id}
-                className={`token ${isCurrent ? 'current' : ''} ${p.isAI ? 'robot-token' : ''} ${isMoving ? 'hopping' : ''} ${isClimbing ? 'climbing' : ''} ${isSliding ? 'sliding' : ''}`}
+                className={`token ${isCurrent ? 'current' : ''} ${p.isAI ? 'robot-token' : ''} ${isMoving ? 'hopping' : ''} ${isClimbing ? 'climbing' : ''} ${isSliding ? 'sliding' : ''} ${isPortaling ? 'portaling' : ''}`}
                 style={{
                   left: `${x + ox}%`,
                   top: `${y + oy}%`,
@@ -601,6 +790,11 @@ function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, t
         }
         .sq-dot.chute { color: var(--accent); }
         .sq-dot.ladder { color: var(--accent-2); }
+        .sq-dot.portal { color: #9b5cff; animation: portal-dot-pulse 1.4s ease-in-out infinite; }
+        @keyframes portal-dot-pulse {
+          0%, 100% { text-shadow: 0 0 0 #9b5cff; opacity: 0.9; }
+          50% { text-shadow: 0 0 6px #9b5cff; opacity: 1; }
+        }
         .board-svg {
           position: absolute;
           top: 14px; left: 14px; right: 14px; bottom: 14px;
@@ -730,6 +924,32 @@ function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, t
           0% { transform: translateX(-30px); opacity: 0; }
           40% { opacity: 1; }
           100% { transform: translateX(30px); opacity: 0; }
+        }
+        /* Portal swirl animations */
+        @keyframes portal-spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        @keyframes portal-spin-rev {
+          from { transform: rotate(360deg); }
+          to { transform: rotate(0deg); }
+        }
+        @keyframes portal-pulse {
+          0%, 100% { opacity: 0.9; }
+          50% { opacity: 1; transform: scale(1.08); transform-origin: center; }
+        }
+        /* Token being portaled — arcs up and away then comes back for landing */
+        .token.portaling {
+          transition: left 0.9s cubic-bezier(.55,.05,.45,1), top 0.9s cubic-bezier(.55,.05,.45,1) !important;
+          animation: portal-throw 0.9s ease-in-out;
+          z-index: 10;
+        }
+        @keyframes portal-throw {
+          0% { transform: translate(-50%, -50%) scale(1) rotate(0deg); filter: none; }
+          20% { transform: translate(-50%, -120%) scale(0.7) rotate(540deg); filter: brightness(1.4) drop-shadow(0 0 6px #9b5cff); }
+          50% { transform: translate(-50%, -220%) scale(0.4) rotate(1440deg); filter: brightness(1.6) drop-shadow(0 0 14px #9b5cff); }
+          80% { transform: translate(-50%, -110%) scale(0.75) rotate(2340deg); filter: brightness(1.4) drop-shadow(0 0 6px #9b5cff); }
+          100% { transform: translate(-50%, -50%) scale(1) rotate(2880deg); filter: none; }
         }
         .token-label {
           color: white;
@@ -2528,27 +2748,55 @@ function Game({ config, onQuit, tweaks = {} }) {
 
     // Check chute
     if (CHUTES[target] !== undefined) {
-      const dest = CHUTES[target];
-      setHighlight(target);
-      await sleep(scaleMs(450));
-      setPhase('sliding');
-      addLog({ type: 'chute', player: player.name, from: target, to: dest });
-      if (player.isAI) {
-        setBlipLine(randLine('myChute'));
-        setBlipMood('sad');
-      } else if (isAITurn === false && config.players.some(p => p.isAI)) {
-        setBlipLine(randLine('chute'));
-        setBlipMood('thinking');
+      // PORTAL: random destination
+      if (PORTAL_SQUARES.has(target)) {
+        // pick a random destination, excluding current and 100 (so player still has to earn the win)
+        const choices = [];
+        for (let i = 1; i <= 99; i++) if (i !== target) choices.push(i);
+        const dest = choices[Math.floor(Math.random() * choices.length)];
+        setHighlight(target);
+        await sleep(scaleMs(550));
+        setPhase('portaling');
+        addLog({ type: 'portal', player: player.name, from: target, to: dest });
+        if (player.isAI) {
+          setBlipLine("A portal?! Recalculating wildly!");
+          setBlipMood('thinking');
+        } else if (config.players.some(p => p.isAI)) {
+          setBlipLine("A random-transport portal! Where'll you land?");
+          setBlipMood('happy');
+        }
+        // throw animation: the CSS .token.portaling handles the arc + spin
+        setPositions(p => {
+          const next = [...p];
+          next[current] = dest;
+          return next;
+        });
+        await sleep(scaleMs(950));
+        setHighlight(null);
+        target = dest;
+      } else {
+        const dest = CHUTES[target];
+        setHighlight(target);
+        await sleep(scaleMs(450));
+        setPhase('sliding');
+        addLog({ type: 'chute', player: player.name, from: target, to: dest });
+        if (player.isAI) {
+          setBlipLine(randLine('myChute'));
+          setBlipMood('sad');
+        } else if (isAITurn === false && config.players.some(p => p.isAI)) {
+          setBlipLine(randLine('chute'));
+          setBlipMood('thinking');
+        }
+        // animate slide: snap to dest with transition
+        setPositions(p => {
+          const next = [...p];
+          next[current] = dest;
+          return next;
+        });
+        await sleep(scaleMs(700));
+        setHighlight(null);
+        target = dest;
       }
-      // animate slide: snap to dest with transition
-      setPositions(p => {
-        const next = [...p];
-        next[current] = dest;
-        return next;
-      });
-      await sleep(scaleMs(700));
-      setHighlight(null);
-      target = dest;
     } else if (LADDERS[target] !== undefined) {
       const dest = LADDERS[target];
       setHighlight(target);
@@ -2724,6 +2972,7 @@ function Game({ config, onQuit, tweaks = {} }) {
                   {e.type === 'bounce' && <><b>{e.player}</b> rolled {e.roll} — too far, stayed put</>}
                   {e.type === 'chute' && <><b>{e.player}</b> slid down a chute <span className="mono">{e.from}→{e.to}</span></>}
                   {e.type === 'ladder' && <><b>{e.player}</b> climbed a ladder <span className="mono">{e.from}→{e.to}</span></>}
+                  {e.type === 'portal' && <><b>{e.player}</b> hit a portal 🌀 <span className="mono">{e.from}→{e.to}</span></>}
                 </div>
               ))}
             </div>
@@ -2788,6 +3037,7 @@ function Game({ config, onQuit, tweaks = {} }) {
                     {phase === 'moving' && `Moving +${diceValue}`}
                     {phase === 'sliding' && 'Sliding down! 🪢'}
                     {phase === 'climbing' && 'Climbing up! 🪜'}
+                    {phase === 'portaling' && 'Portal! Teleporting… 🌀'}
                   </div>
                   <div className="roll-hint mono">SQ. {positions[current]}</div>
                 </>
@@ -3017,6 +3267,7 @@ function Game({ config, onQuit, tweaks = {} }) {
         }
         .log-entry b { font-weight: 600; }
         .log-entry.chute { background: rgba(232,88,62,0.1); color: #a53a26; }
+        .log-entry.portal { background: rgba(155,92,255,0.14); color: #5b2da6; font-weight: 500; }
         .log-entry.ladder { background: rgba(42,138,95,0.1); color: #1e6645; }
 
         .board-area {
