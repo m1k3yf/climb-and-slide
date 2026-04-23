@@ -1585,52 +1585,71 @@ function Dice({ value, rolling, onClick, disabled }) {
     let raf;
     if (rolling) {
       wasRolling.current = true;
-      // Physics-like tumble: spin x and y at different rates, with jitter translation and a bounce
+      // 3D tumble: continuously rotate X and Y with an exponential speed decay so the dice
+      // visually slows down as it approaches rest (matches real-world physics of a die rolling
+      // on a table). Always preserves the 3D cube — no 2D flattening.
       const start = performance.now();
+      const startRot = currentRot;
+      const vx0 = 780 + Math.random() * 160;  // deg/s on X axis
+      const vy0 = 920 + Math.random() * 180;  // deg/s on Y axis
+      const tau = 0.75;                        // decay time constant (seconds)
+      let lastT = start;
+      let accX = 0, accY = 0;
       const tick = (now) => {
+        const dt = Math.min(0.04, (now - lastT) / 1000);
+        lastT = now;
         const t = (now - start) / 1000;
-        const x = -20 + 720 * t + Math.sin(t * 14) * 30;
-        const y = 25 + 900 * t + Math.cos(t * 11) * 40;
-        // simulated bounce: abs sine decaying
-        const bounceT = (t * 3) % 1;
-        const bounce = Math.abs(Math.sin(bounceT * Math.PI)) * (1 - Math.min(1, t / 1.2)) * 18;
-        // tumbling translation (random walk)
-        const tx = Math.sin(t * 17) * 6 + Math.cos(t * 9) * 4;
-        const ty = Math.cos(t * 13) * 4 + Math.sin(t * 23) * 3;
+        const decay = Math.exp(-t / tau);
+        // Integrate angular velocity → rotation this frame
+        accX += vx0 * decay * dt;
+        accY += vy0 * decay * dt;
+        const x = startRot.x + accX + Math.sin(t * 11) * 4;
+        const y = startRot.y + accY + Math.cos(t * 8) * 5;
+        // Decay the airborne bounce (large at start, zero by ~1s)
+        const bounce = Math.max(0, (1 - Math.min(1, t / 1.0))) * 12;
+        // Gentle jitter translation — kept small so the cube feels like a solid object, not a noisy blob
+        const tx = Math.sin(t * 14) * 2.2;
+        const ty = Math.cos(t * 11) * 1.8;
         setCurrentRot({ x, y, tx, ty, bounce });
         raf = requestAnimationFrame(tick);
       };
       raf = requestAnimationFrame(tick);
     } else if (wasRolling.current) {
-      // Settle: animate to the exact face rotation + a couple extra spins for realism
+      // Clean landing: rotate to the exact target face. Use a smooth cubic-bezier-like decel
+      // with a tiny overshoot so the cube "pops" into place like it lightly bounced on a surface.
       wasRolling.current = false;
       const target = faceRotations[value] || faceRotations[1];
       const from = currentRot;
-      // Choose final rotation that's close to current but lands on target multiples of 360
+      // Pick final rotation close to current but landing on target (plus one extra full rotation
+      // so the settle has visible motion even if the cube is already near the target face).
       const finalX = Math.round(from.x / 360) * 360 + target.x + 360;
       const finalY = Math.round(from.y / 360) * 360 + target.y + 360;
       const startTime = performance.now();
-      const dur = 650;
+      const dur = 900;
       const tick = (now) => {
         const p = Math.min(1, (now - startTime) / dur);
-        // easeOutQuart
-        const e = 1 - Math.pow(1 - p, 4);
-        // tiny settle bounce
-        const settleBounce = p > 0.85 ? Math.sin((p - 0.85) / 0.15 * Math.PI) * 8 * (1 - p) : 0;
+        // easeOutQuint: smooth decel, no jitter
+        const e = 1 - Math.pow(1 - p, 5);
+        // Final overshoot wiggle on the approach angle (small, ≤ 6°) to sell the "tap, tap" settle
+        const wobble = p > 0.75 ? Math.sin((p - 0.75) / 0.25 * Math.PI * 2) * 6 * (1 - p) : 0;
+        // Table-bounce: dice drops slightly on first contact, bounces up, settles
+        const tableBounce = p > 0.6
+          ? Math.abs(Math.sin((p - 0.6) / 0.4 * Math.PI * 1.5)) * 7 * (1 - p) * (1 - p)
+          : 0;
         setCurrentRot({
-          x: from.x + (finalX - from.x) * e,
-          y: from.y + (finalY - from.y) * e,
+          x: from.x + (finalX - from.x) * e + wobble * 0.5,
+          y: from.y + (finalY - from.y) * e + wobble,
           tx: from.tx * (1 - e),
-          ty: from.ty * (1 - e) - settleBounce,
-          bounce: settleBounce,
+          ty: from.ty * (1 - e) - tableBounce,
+          bounce: tableBounce,
         });
         if (p < 1) raf = requestAnimationFrame(tick);
       };
       raf = requestAnimationFrame(tick);
     } else {
-      // not rolling and never rolled yet: snap to value
+      // Not rolling and never rolled: snap to face value at the default presentation angle
       const target = faceRotations[value] || faceRotations[1];
-      setCurrentRot(c => ({ ...c, x: target.x - 20, y: target.y + 25 }));
+      setCurrentRot(c => ({ ...c, x: target.x - 20, y: target.y + 25, tx: 0, ty: 0, bounce: 0 }));
     }
     return () => raf && cancelAnimationFrame(raf);
   }, [rolling, value]);
@@ -1787,10 +1806,20 @@ function Dice({ value, rolling, onClick, disabled }) {
       const minY = (halfH + pad) - cy;
       const maxY = vh - (halfH + pad) - cy;
       const bounceDamp = 0.68;
-      if (p.x < minX) { p.x = minX; p.vx = Math.abs(p.vx) * bounceDamp; p.vrot = -p.vrot * 0.8 + (Math.random() - 0.5) * 200; }
-      if (p.x > maxX) { p.x = maxX; p.vx = -Math.abs(p.vx) * bounceDamp; p.vrot = -p.vrot * 0.8 + (Math.random() - 0.5) * 200; }
-      if (p.y < minY) { p.y = minY; p.vy = Math.abs(p.vy) * bounceDamp; p.vrot = -p.vrot * 0.8 + (Math.random() - 0.5) * 200; }
-      if (p.y > maxY) { p.y = maxY; p.vy = -Math.abs(p.vy) * bounceDamp; p.vrot = -p.vrot * 0.8 + (Math.random() - 0.5) * 200; }
+      let hitWall = false;
+      if (p.x < minX) { p.x = minX; p.vx = Math.abs(p.vx) * bounceDamp; p.vrot = -p.vrot * 0.8 + (Math.random() - 0.5) * 200; hitWall = true; }
+      if (p.x > maxX) { p.x = maxX; p.vx = -Math.abs(p.vx) * bounceDamp; p.vrot = -p.vrot * 0.8 + (Math.random() - 0.5) * 200; hitWall = true; }
+      if (p.y < minY) { p.y = minY; p.vy = Math.abs(p.vy) * bounceDamp; p.vrot = -p.vrot * 0.8 + (Math.random() - 0.5) * 200; hitWall = true; }
+      if (p.y > maxY) { p.y = maxY; p.vy = -Math.abs(p.vy) * bounceDamp; p.vrot = -p.vrot * 0.8 + (Math.random() - 0.5) * 200; hitWall = true; }
+      // On wall impact, briefly squash the cube to sell the collision
+      if (hitWall) {
+        const btn = document.querySelector('.dice3d');
+        if (btn) {
+          btn.classList.remove('impact');
+          void btn.offsetWidth; // force reflow so animation restarts
+          btn.classList.add('impact');
+        }
+      }
 
       setPhys({ mode: 'flying', x: p.x, y: p.y, rotZ: p.rotZ });
 
@@ -1851,22 +1880,27 @@ function Dice({ value, rolling, onClick, disabled }) {
   const onPointerUp = () => endDrag(true);
   const onPointerCancel = () => endDrag(false);
 
-  // Compose outer transform from drag / physics / resting / returning
+  // Compose outer transform from drag / physics / resting / returning.
+  // IMPORTANT: during physics we intentionally use translate ONLY. 2D rotation on the outer
+  // wrapper flattens the perspective illusion — the dice must stay a clean 3D object at all
+  // times. All visible rotation comes from the inner .d3-cube's rotateX/rotateY (true 3D).
   let outerTransform, outerTransition;
   if (drag.active) {
-    outerTransform = `translate(${drag.dx}px, ${drag.dy}px) rotate(${Math.max(-40, Math.min(40, drag.dx * 0.12))}deg) scale(1.04)`;
+    // Lifting the die: subtle scale-up only, no 2D rotation (preserves 3D perspective).
+    outerTransform = `translate(${drag.dx}px, ${drag.dy}px) scale(1.05)`;
     outerTransition = 'transform 60ms linear';
   } else if (phys.mode === 'flying') {
-    outerTransform = `translate(${phys.x}px, ${phys.y}px) rotate(${phys.rotZ}deg)`;
+    outerTransform = `translate(${phys.x}px, ${phys.y}px)`;
     outerTransition = 'none';
   } else if (phys.mode === 'resting') {
-    outerTransform = `translate(${phys.x}px, ${phys.y}px) rotate(${phys.rotZ}deg)`;
+    // Land softly: microscopic translate adjustment to sell "settle on the table"
+    outerTransform = `translate(${phys.x}px, ${phys.y}px)`;
     outerTransition = 'none';
   } else if (phys.mode === 'returning') {
-    outerTransform = `translate(0, 0) rotate(0) scale(1)`;
+    outerTransform = `translate(0, 0) scale(1)`;
     outerTransition = 'transform 520ms cubic-bezier(.34,1.26,.64,1)';
   } else {
-    outerTransform = 'translate(0, 0) rotate(0) scale(1)';
+    outerTransform = 'translate(0, 0) scale(1)';
     outerTransition = 'transform 380ms cubic-bezier(.34,1.56,.64,1)';
   }
 
@@ -1926,6 +1960,13 @@ function Dice({ value, rolling, onClick, disabled }) {
         .dice3d.grabbing { cursor: grabbing; }
         .dice3d.physics, .dice3d.grabbing { z-index: 1000; }
         .dice3d.resting .d3-cube { filter: drop-shadow(0 10px 22px rgba(0,0,0,0.35)) brightness(1.02); }
+        /* Brief bright flash on each wall-impact — no transform conflict, preserves the 3D cube. */
+        .dice3d.impact .d3-cube { animation: cube-impact-flash 180ms ease-out; }
+        @keyframes cube-impact-flash {
+          0% { filter: brightness(1) drop-shadow(0 4px 8px rgba(0,0,0,0.2)); }
+          30% { filter: brightness(1.18) drop-shadow(0 8px 16px rgba(232,178,62,0.55)) drop-shadow(0 0 8px rgba(255,255,255,0.6)); }
+          100% { filter: brightness(1) drop-shadow(0 4px 8px rgba(0,0,0,0.2)); }
+        }
         .dice3d:disabled { cursor: not-allowed; opacity: 0.75; }
         .dice3d:not(:disabled):not(.rolling):not(.grabbing):not(.physics) .d3-cube { animation: dice-breathe 2.2s ease-in-out infinite; }
         @keyframes dice-breathe {
@@ -1964,10 +2005,15 @@ function Dice({ value, rolling, onClick, disabled }) {
             radial-gradient(circle at 30% 25%, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0) 45%),
             linear-gradient(145deg, #ffffff 0%, #f4ecd8 55%, #d9ccac 100%);
           border-radius: 18%;
+          /* Multiple inset shadows give the face clear beveled edges so it always reads as a solid
+             3D surface — even under rapid rotation or at oblique angles. */
           box-shadow:
-            inset 0 0 0 1px rgba(255,255,255,0.85),
-            inset 0 -4px 10px rgba(120,95,55,0.2),
-            inset 0 2px 4px rgba(255,255,255,0.9);
+            inset 0 0 0 1px rgba(255,255,255,0.9),
+            inset 0 0 0 2px rgba(180,150,100,0.25),
+            inset 0 -5px 12px rgba(120,95,55,0.28),
+            inset 4px 0 10px rgba(120,95,55,0.12),
+            inset -4px 0 10px rgba(120,95,55,0.12),
+            inset 0 3px 5px rgba(255,255,255,0.95);
           backface-visibility: hidden;
           padding: 10%;
         }
