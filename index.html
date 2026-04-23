@@ -2049,8 +2049,8 @@ window.Dice = Dice;
 // === modeselect.jsx ===
 // Mode selection screen
 
-const PLAYER_COLORS = ['#e8583e', '#2a8a5f', '#e8b23e', '#5b6cff', '#a855a0'];
-const DEFAULT_NAMES = ['Ruby', 'Sage', 'Sunny', 'Indie', 'Mauve'];
+const PLAYER_COLORS = ['#e8583e', '#2a8a5f', '#e8b23e', '#5b6cff', '#a855a0', '#ff8a3d', '#6d4a2e', '#1ac0c6'];
+const DEFAULT_NAMES = ['Ruby', 'Sage', 'Sunny', 'Indie', 'Mauve', 'Ember', 'Coco', 'Aqua'];
 
 function ModeSelect({ onStart }) {
   const [mode, setMode] = React.useState(null); // 'multi' | 'ai'
@@ -2059,7 +2059,7 @@ function ModeSelect({ onStart }) {
   const [playerName, setPlayerName] = React.useState('You');
   const [names, setNames] = React.useState([...DEFAULT_NAMES]);
   // one character per slot; default to first N distinct
-  const [chars, setChars] = React.useState(CHARACTERS.slice(0, 5).map(c => c.id));
+  const [chars, setChars] = React.useState(CHARACTERS.slice(0, 8).map(c => c.id));
   const [myChar, setMyChar] = React.useState(CHARACTERS[0].id);
 
   const colorFor = (cid) => (CHARACTERS.find(c => c.id === cid) || CHARACTERS[0]).color;
@@ -2130,7 +2130,7 @@ function ModeSelect({ onStart }) {
               </div>
               <div>
                 <div className="ms-mode-title serif">Pass & Play</div>
-                <div className="ms-mode-desc">2–5 humans on one device</div>
+                <div className="ms-mode-desc">2–8 humans on one device</div>
               </div>
               <div className="ms-mode-arrow">→</div>
             </button>
@@ -2152,7 +2152,7 @@ function ModeSelect({ onStart }) {
             <div className="ms-field">
               <label className="mono">HOW MANY PLAYERS</label>
               <div className="ms-chips">
-                {[2,3,4,5].map(n => (
+                {[2,3,4,5,6,7,8].map(n => (
                   <button
                     key={n}
                     className={`chip ${humanCount === n ? 'active' : ''}`}
