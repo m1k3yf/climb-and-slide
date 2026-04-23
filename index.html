@@ -85,6 +85,78 @@ const CHUTES_LIST = [
 const CHUTES = Object.fromEntries(CHUTES_LIST.map(c => [c.from, c.to]));
 const PORTAL_SQUARES = new Set(CHUTES_LIST.filter(c => c.portal).map(c => c.from));
 
+// ==== Spiral slide geometry ====
+// The big spiral (87→24) is drawn as a series of alternating front/back arches that
+// together form a coiled tube. We extract the geometry so both the renderer AND the
+// token-slide animation use the same path.
+const SPIRAL_NUM_LOOPS = 4;   // fewer, bigger loops = more 3D pop
+const SPIRAL_ARCH_R = 7.2;    // perpendicular amplitude of each arch
+const SPIRAL_TUBE_W = 3.6;    // tube stroke width
+
+function computeSpiralGeometry(fromSq, toSq) {
+  const ax = ((fromSq - 1) % 10);
+  const ay = Math.floor((fromSq - 1) / 10);
+  void ax; void ay; // keep linter quiet — actual position math uses squareToPct below
+  const a = (function sqToPct(sq) {
+    const row = Math.floor((sq - 1) / 10);
+    const inRow = (sq - 1) % 10;
+    const col = row % 2 === 0 ? inRow : 9 - inRow;
+    return { x: (col + 0.5) * 10, y: 100 - (row + 0.5) * 10 };
+  })(fromSq);
+  const b = (function sqToPct(sq) {
+    const row = Math.floor((sq - 1) / 10);
+    const inRow = (sq - 1) % 10;
+    const col = row % 2 === 0 ? inRow : 9 - inRow;
+    return { x: (col + 0.5) * 10, y: 100 - (row + 0.5) * 10 };
+  })(toSq);
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len = Math.hypot(dx, dy);
+  const nxAx = -dy / len, nyAx = dx / len;
+  const segs = SPIRAL_NUM_LOOPS * 2;
+  const boundaries = [];
+  for (let i = 0; i <= segs; i++) {
+    const t = i / segs;
+    boundaries.push({ x: a.x + dx * t, y: a.y + dy * t });
+  }
+  const arches = [];
+  for (let i = 0; i < segs; i++) {
+    const s = boundaries[i];
+    const e = boundaries[i + 1];
+    const isFront = i % 2 === 0;
+    const sign = isFront ? -1 : 1;
+    const midAxisX = (s.x + e.x) / 2;
+    const midAxisY = (s.y + e.y) / 2;
+    const ctrlX = midAxisX + sign * nxAx * SPIRAL_ARCH_R;
+    const ctrlY = midAxisY + sign * nyAx * SPIRAL_ARCH_R;
+    arches.push({ s, e, ctrl: { x: ctrlX, y: ctrlY }, isFront });
+  }
+  return { a, b, boundaries, arches };
+}
+
+// Sample N points along one quadratic bezier arch
+function sampleQuad(s, ctrl, e, n) {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const t = i / n;
+    const mt = 1 - t;
+    out.push({
+      x: mt * mt * s.x + 2 * mt * t * ctrl.x + t * t * e.x,
+      y: mt * mt * s.y + 2 * mt * t * ctrl.y + t * t * e.y,
+    });
+  }
+  return out;
+}
+
+// Flatten the entire spiral path into a dense sequence of {x,y} points (in board % coords).
+function sampleSpiralPath(fromSq, toSq, samplesPerArch = 28) {
+  const { arches } = computeSpiralGeometry(fromSq, toSq);
+  const pts = [];
+  for (const ar of arches) pts.push(...sampleQuad(ar.s, ar.ctrl, ar.e, samplesPerArch));
+  const last = arches[arches.length - 1].e;
+  pts.push({ x: last.x, y: last.y });
+  return pts;
+}
+
 const LADDERS_LIST = [
   { from: 4,  to: 14, color: '#e8b23e' },  // gold
   { from: 9,  to: 31, color: '#e8583e' },  // red
@@ -113,7 +185,7 @@ function squareToPct(sq) {
   return { x, y };
 }
 
-function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, tweaks = {}, phase = 'waiting' }) {
+function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, tweaks = {}, phase = 'waiting', tokenOverride = null }) {
   const showHintArrows = tweaks.showHintArrows !== false;
   const showGlidePath = tweaks.showGlidePath !== false;
   const boardScale = tweaks.boardScale ?? 1;
@@ -336,103 +408,140 @@ function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, t
               );
             }
             if (spiral) {
-              // Render as a coiled spring / slinky — series of alternating front+back arches
-              const a = squareToPct(+from);
-              const b = squareToPct(+to);
-              const dx = b.x - a.x, dy = b.y - a.y;
-              const len = Math.hypot(dx, dy);
-              const nxAx = -dy / len, nyAx = dx / len; // unit normal to path (perpendicular axis)
+              // Big 3D coiled water-slide tube — inspired by a real spiral water slide.
+              // Uses the shared spiral geometry (same path data drives the token's slide animation).
+              const geo = computeSpiralGeometry(+from, +to);
+              const { a, b, arches, boundaries } = geo;
               const uidS = `sp-${from}`;
-              const cL = shadeHex(color, 80);
+              const cL = shadeHex(color, 90);
               const cM = color;
-              const cD = shadeHex(color, -50);
-              const cDD = shadeHex(color, -90);
-              const numLoops = 5;
-              const archR = 4.5;    // arch rise (perpendicular to main axis)
-              const tubeW = 2.6;    // stroke thickness
-              // Build the segment boundary points along the axis: 2 segments per loop (one front arch + one back arch)
-              const segs = numLoops * 2;
-              const pts = [];
-              for (let i = 0; i <= segs; i++) {
-                const t = i / segs;
-                pts.push({ x: a.x + dx * t, y: a.y + dy * t });
-              }
-              const arches = [];
-              for (let i = 0; i < segs; i++) {
-                const s = pts[i];
-                const e = pts[i + 1];
-                const isFront = i % 2 === 0; // alternate front/back
-                const sign = isFront ? -1 : 1; // flip which side of axis the arch bulges to
-                const midAxisX = (s.x + e.x) / 2;
-                const midAxisY = (s.y + e.y) / 2;
-                const controlX = midAxisX + sign * nxAx * archR;
-                const controlY = midAxisY + sign * nyAx * archR;
-                arches.push({ s, e, ctrl: { x: controlX, y: controlY }, isFront });
-              }
+              const cD = shadeHex(color, -45);
+              const cDD = shadeHex(color, -85);
+              const cDDD = shadeHex(color, -115);
+              const tubeW = SPIRAL_TUBE_W;
+              const archR = SPIRAL_ARCH_R;
               return (
                 <g key={'s' + from}>
                   <defs>
+                    {/* Horizontal gradient gives the tube a cylindrical "round" feel along its length */}
                     <linearGradient id={`${uidS}-tube`} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor={cL}/>
-                      <stop offset="45%" stopColor={cM}/>
-                      <stop offset="100%" stopColor={cD}/>
+                      <stop offset="30%" stopColor={cM}/>
+                      <stop offset="72%" stopColor={cD}/>
+                      <stop offset="100%" stopColor={cDD}/>
                     </linearGradient>
+                    {/* Inner bore (dark tube interior seen from ends & junctions) */}
+                    <radialGradient id={`${uidS}-bore`} cx="0.5" cy="0.4" r="0.6">
+                      <stop offset="0%" stopColor={cDDD} stopOpacity="0.95"/>
+                      <stop offset="60%" stopColor={cDDD} stopOpacity="0.7"/>
+                      <stop offset="100%" stopColor={cDD} stopOpacity="0.1"/>
+                    </radialGradient>
+                    <filter id={`${uidS}-pop`} x="-30%" y="-30%" width="160%" height="160%">
+                      <feGaussianBlur in="SourceAlpha" stdDeviation="1.6"/>
+                      <feOffset dx="1.2" dy="2.4" result="offsetblur"/>
+                      <feComponentTransfer>
+                        <feFuncA type="linear" slope="0.55"/>
+                      </feComponentTransfer>
+                      <feMerge>
+                        <feMergeNode/>
+                        <feMergeNode in="SourceGraphic"/>
+                      </feMerge>
+                    </filter>
                   </defs>
-                  {/* Cast shadow along the main axis */}
-                  <g transform="translate(1.5 2.2)" opacity="0.35" filter="url(#castShadowHeavy)">
+
+                  {/* Big, chunky ground shadow underneath */}
+                  <g transform="translate(2.4 3.8)" opacity="0.55" filter="url(#castShadowHeavy)">
                     {arches.map((ar, i) => (
                       <path key={'shd' + i}
                         d={`M ${ar.s.x} ${ar.s.y} Q ${ar.ctrl.x} ${ar.ctrl.y} ${ar.e.x} ${ar.e.y}`}
-                        fill="none" stroke="#000" strokeWidth={tubeW + 0.4} strokeLinecap="round"/>
+                        fill="none" stroke="#000" strokeWidth={tubeW + 2.0} strokeLinecap="round"/>
                     ))}
                   </g>
-                  {/* BACK arches first (drawn dimmer, behind the spine) */}
-                  {arches.filter(a => !a.isFront).map((ar, i) => (
+
+                  {/* BACK arches — darker, drawn first so front arches cover them */}
+                  {arches.filter(ar => !ar.isFront).map((ar, i) => (
                     <g key={'bk' + i}>
                       <path
                         d={`M ${ar.s.x} ${ar.s.y} Q ${ar.ctrl.x} ${ar.ctrl.y} ${ar.e.x} ${ar.e.y}`}
-                        fill="none" stroke={cDD} strokeWidth={tubeW + 0.5} strokeLinecap="round" opacity="0.85"/>
+                        fill="none" stroke={cDDD} strokeWidth={tubeW + 1.0} strokeLinecap="round"/>
                       <path
                         d={`M ${ar.s.x} ${ar.s.y} Q ${ar.ctrl.x} ${ar.ctrl.y} ${ar.e.x} ${ar.e.y}`}
-                        fill="none" stroke={cD} strokeWidth={tubeW - 0.3} strokeLinecap="round"/>
+                        fill="none" stroke={cDD} strokeWidth={tubeW + 0.2} strokeLinecap="round" opacity="0.95"/>
+                      <path
+                        d={`M ${ar.s.x} ${ar.s.y} Q ${ar.ctrl.x} ${ar.ctrl.y} ${ar.e.x} ${ar.e.y}`}
+                        fill="none" stroke={cD} strokeWidth={tubeW - 1.3} strokeLinecap="round" opacity="0.9"/>
+                      {/* subtle top sheen on back loops */}
+                      <path
+                        d={`M ${ar.s.x} ${ar.s.y} Q ${ar.ctrl.x} ${ar.ctrl.y + 0.15} ${ar.e.x} ${ar.e.y}`}
+                        fill="none" stroke={cL} strokeWidth="0.3" strokeLinecap="round" opacity="0.35"/>
                     </g>
                   ))}
-                  {/* Central spine (peeking between coils) */}
-                  <line x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-                    stroke={cDD} strokeWidth="0.5" strokeLinecap="round" opacity="0.45"/>
-                  {/* FRONT arches over the top — brighter, thicker, with highlight */}
-                  {arches.filter(a => a.isFront).map((ar, i) => (
+
+                  {/* Inner-tube "bore" cross-sections at each coil junction — reads as hollow 3D tube */}
+                  {boundaries.map((bp, i) => {
+                    if (i === 0 || i === boundaries.length - 1) return null;
+                    return (
+                      <g key={'cs' + i}>
+                        <ellipse cx={bp.x + 0.1} cy={bp.y + 0.3} rx={tubeW * 0.72} ry={tubeW * 0.28} fill="#000" opacity="0.4"/>
+                        <ellipse cx={bp.x} cy={bp.y} rx={tubeW * 0.66} ry={tubeW * 0.24} fill={cDDD}/>
+                        <ellipse cx={bp.x} cy={bp.y - 0.08} rx={tubeW * 0.58} ry={tubeW * 0.2} fill={`url(#${uidS}-bore)`}/>
+                        <ellipse cx={bp.x - tubeW * 0.2} cy={bp.y - 0.22} rx={tubeW * 0.18} ry={tubeW * 0.06} fill="#fff" opacity="0.55"/>
+                      </g>
+                    );
+                  })}
+
+                  {/* FRONT arches — bright, thick, heavy outlines for "pop" */}
+                  {arches.filter(ar => ar.isFront).map((ar, i) => (
                     <g key={'fr' + i}>
-                      {/* tube outline */}
+                      {/* Heavy dark outer rim */}
                       <path
                         d={`M ${ar.s.x} ${ar.s.y} Q ${ar.ctrl.x} ${ar.ctrl.y} ${ar.e.x} ${ar.e.y}`}
-                        fill="none" stroke={cDD} strokeWidth={tubeW + 0.6} strokeLinecap="round"/>
-                      {/* tube body */}
+                        fill="none" stroke={cDDD} strokeWidth={tubeW + 1.4} strokeLinecap="round"/>
+                      {/* Mid-tone tube body */}
                       <path
                         d={`M ${ar.s.x} ${ar.s.y} Q ${ar.ctrl.x} ${ar.ctrl.y} ${ar.e.x} ${ar.e.y}`}
-                        fill="none" stroke={`url(#${uidS}-tube)`} strokeWidth={tubeW} strokeLinecap="round"/>
-                      {/* highlight sheen */}
+                        fill="none" stroke={`url(#${uidS}-tube)`} strokeWidth={tubeW + 0.2} strokeLinecap="round"/>
+                      {/* Highlight band along top (where light hits) */}
                       <path
-                        d={`M ${ar.s.x} ${ar.s.y} Q ${ar.ctrl.x} ${ar.ctrl.y} ${ar.e.x} ${ar.e.y}`}
-                        fill="none" stroke="#fff" strokeWidth="0.5" strokeLinecap="round" opacity="0.6"
-                        transform={`translate(0 -0.3)`}/>
+                        d={`M ${ar.s.x} ${ar.s.y - 0.45} Q ${ar.ctrl.x} ${ar.ctrl.y - 0.65} ${ar.e.x} ${ar.e.y - 0.45}`}
+                        fill="none" stroke={cL} strokeWidth="1.0" strokeLinecap="round" opacity="0.9"/>
+                      {/* Glossy white shine */}
+                      <path
+                        d={`M ${ar.s.x + 0.3} ${ar.s.y - 0.55} Q ${ar.ctrl.x} ${ar.ctrl.y - 0.85} ${ar.e.x - 0.3} ${ar.e.y - 0.55}`}
+                        fill="none" stroke="#fff" strokeWidth="0.45" strokeLinecap="round" opacity="0.8"/>
+                      {/* Subtle bottom shadow line */}
+                      <path
+                        d={`M ${ar.s.x} ${ar.s.y + 0.45} Q ${ar.ctrl.x} ${ar.ctrl.y + 0.6} ${ar.e.x} ${ar.e.y + 0.45}`}
+                        fill="none" stroke={cDDD} strokeWidth="0.7" strokeLinecap="round" opacity="0.55"/>
                     </g>
                   ))}
-                  {/* Entry funnel at top */}
+
+                  {/* Entry funnel — dramatic opening at top of slide */}
                   <g transform={`translate(${a.x} ${a.y})`}>
-                    <ellipse cx="0.3" cy="0.8" rx={archR * 0.8} ry={archR * 0.35} fill="#000" opacity="0.3" filter="url(#castShadowSoft)"/>
-                    <ellipse cx="0" cy="0.2" rx={archR * 0.75} ry={archR * 0.4} fill={cDD}/>
-                    <ellipse cx="0" cy="0" rx={archR * 0.75} ry={archR * 0.4} fill={`url(#${uidS}-tube)`} stroke={cDD} strokeWidth="0.25"/>
-                    <ellipse cx="0" cy="-0.1" rx={archR * 0.52} ry={archR * 0.26} fill={cDD} opacity="0.85"/>
-                    <ellipse cx="-0.8" cy="-0.5" rx={archR * 0.3} ry={archR * 0.08} fill="#fff" opacity="0.55"/>
+                    <ellipse cx="1.1" cy="1.8" rx={archR * 1.15} ry={archR * 0.48} fill="#000" opacity="0.5" filter="url(#castShadowHeavy)"/>
+                    <ellipse cx="0" cy="0.5" rx={archR * 0.95} ry={archR * 0.5} fill={cDDD}/>
+                    <ellipse cx="0" cy="0.15" rx={archR * 0.95} ry={archR * 0.5} fill={cDD}/>
+                    <ellipse cx="0" cy="0" rx={archR * 0.95} ry={archR * 0.5} fill={`url(#${uidS}-tube)`} stroke={cDDD} strokeWidth="0.35"/>
+                    {/* bore (opening) */}
+                    <ellipse cx="0" cy="-0.12" rx={archR * 0.7} ry={archR * 0.38} fill={cDDD}/>
+                    <ellipse cx="0" cy="-0.12" rx={archR * 0.7} ry={archR * 0.38} fill={`url(#${uidS}-bore)`}/>
+                    <ellipse cx="0" cy="-0.1" rx={archR * 0.55} ry={archR * 0.3} fill="#000" opacity="0.55"/>
+                    {/* rim highlights */}
+                    <ellipse cx="-1.2" cy="-0.75" rx={archR * 0.38} ry={archR * 0.1} fill="#fff" opacity="0.75"/>
+                    <ellipse cx="0.8" cy="0.25" rx={archR * 0.28} ry={archR * 0.08} fill={cL} opacity="0.5"/>
                   </g>
-                  {/* Exit funnel at bottom */}
+
+                  {/* Exit funnel — mouth of slide where you come out */}
                   <g transform={`translate(${b.x} ${b.y})`}>
-                    <ellipse cx="0.3" cy="0.8" rx={archR * 0.85} ry={archR * 0.35} fill="#000" opacity="0.35" filter="url(#castShadowSoft)"/>
-                    <ellipse cx="0" cy="0.2" rx={archR * 0.85} ry={archR * 0.45} fill={cDD}/>
-                    <ellipse cx="0" cy="0" rx={archR * 0.85} ry={archR * 0.45} fill={`url(#${uidS}-tube)`} stroke={cDD} strokeWidth="0.25"/>
-                    <ellipse cx="0" cy="-0.1" rx={archR * 0.6} ry={archR * 0.28} fill={cDD} opacity="0.85"/>
-                    <ellipse cx="-0.9" cy="-0.55" rx={archR * 0.35} ry={archR * 0.09} fill="#fff" opacity="0.55"/>
+                    <ellipse cx="1.0" cy="1.8" rx={archR * 1.1} ry={archR * 0.42} fill="#000" opacity="0.5" filter="url(#castShadowHeavy)"/>
+                    <ellipse cx="0" cy="0.5" rx={archR * 1.0} ry={archR * 0.52} fill={cDDD}/>
+                    <ellipse cx="0" cy="0.15" rx={archR * 1.0} ry={archR * 0.52} fill={cDD}/>
+                    <ellipse cx="0" cy="0" rx={archR * 1.0} ry={archR * 0.52} fill={`url(#${uidS}-tube)`} stroke={cDDD} strokeWidth="0.35"/>
+                    <ellipse cx="0" cy="-0.12" rx={archR * 0.74} ry={archR * 0.4} fill={cDDD}/>
+                    <ellipse cx="0" cy="-0.12" rx={archR * 0.74} ry={archR * 0.4} fill={`url(#${uidS}-bore)`}/>
+                    <ellipse cx="0" cy="-0.1" rx={archR * 0.6} ry={archR * 0.32} fill="#000" opacity="0.5"/>
+                    <ellipse cx="-1.3" cy="-0.8" rx={archR * 0.4} ry={archR * 0.1} fill="#fff" opacity="0.75"/>
+                    <ellipse cx="0.9" cy="0.25" rx={archR * 0.3} ry={archR * 0.08} fill={cL} opacity="0.5"/>
                   </g>
                 </g>
               );
@@ -635,24 +744,28 @@ function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, t
         <div className="tokens">
           {players.map((p, i) => {
             const sq = tokenPositions[i];
-            if (sq < 1) return null;
-            const { x, y } = squareToPct(sq);
+            const override = tokenOverride && tokenOverride[i];
+            if (sq < 1 && !override) return null;
+            // If overridden (e.g. during spiral slide), use exact x/y path coords; else use square center
+            const base = override ? { x: override.x, y: override.y } : squareToPct(sq);
             // offset so multiple tokens on same square don't overlap completely
-            const sameSquareIdx = players
+            const sameSquareIdx = override ? 0 : players
               .map((_, j) => j)
               .filter(j => tokenPositions[j] === sq)
               .indexOf(i);
-            const ox = (sameSquareIdx % 2) * 3.5 - 1.75;
-            const oy = Math.floor(sameSquareIdx / 2) * 3.5 - 1.75;
+            const ox = override ? 0 : (sameSquareIdx % 2) * 3.5 - 1.75;
+            const oy = override ? 0 : Math.floor(sameSquareIdx / 2) * 3.5 - 1.75;
+            const x = base.x, y = base.y;
             const isCurrent = i === currentPlayerIdx;
             const isMoving = isCurrent && phase === 'moving';
             const isClimbing = isCurrent && phase === 'climbing';
             const isSliding = isCurrent && phase === 'sliding';
             const isPortaling = isCurrent && phase === 'portaling';
+            const isSpiraling = isCurrent && phase === 'spiraling';
             return (
               <div
                 key={p.id}
-                className={`token ${isCurrent ? 'current' : ''} ${p.isAI ? 'robot-token' : ''} ${isMoving ? 'hopping' : ''} ${isClimbing ? 'climbing' : ''} ${isSliding ? 'sliding' : ''} ${isPortaling ? 'portaling' : ''}`}
+                className={`token ${isCurrent ? 'current' : ''} ${p.isAI ? 'robot-token' : ''} ${isMoving ? 'hopping' : ''} ${isClimbing ? 'climbing' : ''} ${isSliding ? 'sliding' : ''} ${isPortaling ? 'portaling' : ''} ${isSpiraling ? 'spiraling' : ''}`}
                 style={{
                   left: `${x + ox}%`,
                   top: `${y + oy}%`,
@@ -867,6 +980,19 @@ function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, t
         .token.sliding {
           animation: token-slide 0.35s ease-in-out infinite;
           filter: drop-shadow(0 0 10px rgba(232,88,62,0.7));
+        }
+        /* While the token is being auto-piloted along the spiral path, kill left/top transitions
+           so RAF updates render 1:1. Add a spin + glow to sell the "whee!" water-slide feel. */
+        .token.spiraling {
+          transition: none !important;
+          animation: token-spiral 0.55s linear infinite;
+          filter: drop-shadow(0 0 10px rgba(255,122,61,0.8));
+          z-index: 8;
+        }
+        @keyframes token-spiral {
+          0% { transform: translate(-50%, -50%) rotate(0deg) scale(1); }
+          50% { transform: translate(-50%, -58%) rotate(180deg) scale(1.1); }
+          100% { transform: translate(-50%, -50%) rotate(360deg) scale(1); }
         }
         @keyframes token-slide {
           0% { transform: translate(-50%, -50%) rotate(0deg); }
@@ -1524,15 +1650,54 @@ function Dice({ value, rolling, onClick, disabled }) {
   const shadowScale = 1 + currentRot.bounce / 40;
   const shadowOpacity = Math.max(0.15, 0.45 - currentRot.bounce / 50);
 
-  // ==== Throw gesture (press-and-hold, drag to aim, release to fling) ====
+  // ==== Throw gesture + physics simulation ====
+  // The dice behaves like a real die rolling on a table: it has velocity, decelerates via
+  // friction, bounces off the window edges (walls), eventually rests on a face, stays visible
+  // for ~2s so the user can read the result, then returns to its home spot.
   const [drag, setDrag] = React.useState({ active: false, dx: 0, dy: 0 });
-  const [flying, setFlying] = React.useState(null); // { dx, dy, rot } one-shot launch pose
+  // phys mode: 'idle' | 'flying' | 'resting' | 'returning'
+  const [phys, setPhys] = React.useState({ mode: 'idle', x: 0, y: 0, rotZ: 0 });
   const startRef = React.useRef({ x: 0, y: 0 });
   const lastMoveRef = React.useRef({ x: 0, y: 0, t: 0 });
   const velRef = React.useRef({ vx: 0, vy: 0 });
   const diceBoxRef = React.useRef({ cx: 0, cy: 0, w: 80, h: 80 });
+  const physRef = React.useRef({ x: 0, y: 0, vx: 0, vy: 0, rotZ: 0, vrot: 0, running: false, lastT: 0, startT: 0 });
+  const rafRef = React.useRef(null);
+  const restTimerRef = React.useRef(null);
+  const returnTimerRef = React.useRef(null);
 
-  const canInteract = !disabled && !rolling;
+  const canInteract = !disabled && !rolling && phys.mode !== 'flying' && phys.mode !== 'resting' && phys.mode !== 'returning';
+
+  const cancelTimers = () => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    if (restTimerRef.current) clearTimeout(restTimerRef.current);
+    if (returnTimerRef.current) clearTimeout(returnTimerRef.current);
+    rafRef.current = null;
+    restTimerRef.current = null;
+    returnTimerRef.current = null;
+  };
+
+  React.useEffect(() => () => cancelTimers(), []);
+
+  // Auto-start physics when `rolling` becomes true and no physics is already underway
+  // (i.e. AI-triggered rolls or any programmatic roll — gives the same "dice on a table" feel).
+  const prevRollingRef = React.useRef(false);
+  React.useEffect(() => {
+    if (rolling && !prevRollingRef.current && phys.mode === 'idle' && !drag.active) {
+      // Capture the dice's current screen position for wall-bounce math
+      const btn = document.querySelector('.dice3d');
+      if (btn) {
+        const r = btn.getBoundingClientRect();
+        diceBoxRef.current = { cx: r.left + r.width / 2, cy: r.top + r.height / 2, w: r.width, h: r.height };
+      }
+      const angle = Math.random() * Math.PI * 2;
+      const mag = 850 + Math.random() * 550;
+      const vx = Math.cos(angle) * mag;
+      const vy = Math.sin(angle) * mag - 300;
+      startPhysics(0, 0, vx, vy);
+    }
+    prevRollingRef.current = rolling;
+  }, [rolling]);
 
   const onPointerDown = (e) => {
     if (!canInteract) return;
@@ -1550,27 +1715,26 @@ function Dice({ value, rolling, onClick, disabled }) {
     lastMoveRef.current = { x: e.clientX, y: e.clientY, t: performance.now() };
     velRef.current = { vx: 0, vy: 0 };
     setDrag({ active: true, dx: 0, dy: 0 });
-    setFlying(null);
+    setPhys({ mode: 'idle', x: 0, y: 0, rotZ: 0 });
   };
 
   const onPointerMove = (e) => {
     if (!drag.active) return;
     const rawDx = e.clientX - startRef.current.x;
     const rawDy = e.clientY - startRef.current.y;
-    // Clamp so the dice's bounding box stays inside the viewport — throw it anywhere on screen
+    // Clamp so the dice stays inside the viewport while dragging
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const halfW = diceBoxRef.current.w / 2;
     const halfH = diceBoxRef.current.h / 2;
     const { cx, cy } = diceBoxRef.current;
-    const pad = 4; // tiny breathing room from the window edge
+    const pad = 4;
     const minDx = (halfW + pad) - cx;
     const maxDx = vw - (halfW + pad) - cx;
     const minDy = (halfH + pad) - cy;
     const maxDy = vh - (halfH + pad) - cy;
     const dx = Math.max(minDx, Math.min(maxDx, rawDx));
     const dy = Math.max(minDy, Math.min(maxDy, rawDy));
-    // Velocity (px/s) from last sample
     const now = performance.now();
     const dt = Math.max(1, now - lastMoveRef.current.t);
     velRef.current = {
@@ -1581,6 +1745,77 @@ function Dice({ value, rolling, onClick, disabled }) {
     setDrag({ active: true, dx, dy });
   };
 
+  const startPhysics = (initX, initY, vx, vy) => {
+    cancelTimers();
+    physRef.current = {
+      x: initX, y: initY,
+      vx, vy,
+      rotZ: 0,
+      vrot: (Math.random() - 0.5) * 900 + (vx * 0.25), // initial spin partly coupled to horizontal fling
+      running: true,
+      lastT: 0,
+      startT: performance.now(),
+    };
+    setPhys({ mode: 'flying', x: initX, y: initY, rotZ: 0 });
+
+    const step = (now) => {
+      const p = physRef.current;
+      if (!p.running) return;
+      const prev = p.lastT || now;
+      const dt = Math.min(0.04, (now - prev) / 1000);
+      p.lastT = now;
+
+      // Friction (linear drag): per-second decay factor ~0.35 (so velocity drops to ~35% per second at higher speeds,
+      // slowing down until below rest threshold). Using an exp decay keeps it smooth.
+      const fric = Math.pow(0.4, dt);
+      p.vx *= fric;
+      p.vy *= fric;
+      p.vrot *= Math.pow(0.55, dt);
+
+      // Integrate
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.rotZ += p.vrot * dt;
+
+      // Bounce off viewport walls
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const { cx, cy, w, h } = diceBoxRef.current;
+      const halfW = w / 2, halfH = h / 2, pad = 4;
+      const minX = (halfW + pad) - cx;
+      const maxX = vw - (halfW + pad) - cx;
+      const minY = (halfH + pad) - cy;
+      const maxY = vh - (halfH + pad) - cy;
+      const bounceDamp = 0.68;
+      if (p.x < minX) { p.x = minX; p.vx = Math.abs(p.vx) * bounceDamp; p.vrot = -p.vrot * 0.8 + (Math.random() - 0.5) * 200; }
+      if (p.x > maxX) { p.x = maxX; p.vx = -Math.abs(p.vx) * bounceDamp; p.vrot = -p.vrot * 0.8 + (Math.random() - 0.5) * 200; }
+      if (p.y < minY) { p.y = minY; p.vy = Math.abs(p.vy) * bounceDamp; p.vrot = -p.vrot * 0.8 + (Math.random() - 0.5) * 200; }
+      if (p.y > maxY) { p.y = maxY; p.vy = -Math.abs(p.vy) * bounceDamp; p.vrot = -p.vrot * 0.8 + (Math.random() - 0.5) * 200; }
+
+      setPhys({ mode: 'flying', x: p.x, y: p.y, rotZ: p.rotZ });
+
+      const speed = Math.hypot(p.vx, p.vy);
+      const elapsed = (now - p.startT) / 1000;
+      // Settle when the dice is nearly stopped or we hit the physics time limit
+      if ((speed < 22 && elapsed > 0.35) || elapsed > 1.6) {
+        p.running = false;
+        rafRef.current = null;
+        // Enter resting state at the final landing spot; face will settle via rolling=false from parent
+        setPhys({ mode: 'resting', x: p.x, y: p.y, rotZ: p.rotZ });
+        // After 2 seconds of display, animate back to home
+        restTimerRef.current = setTimeout(() => {
+          setPhys({ mode: 'returning', x: 0, y: 0, rotZ: 0 });
+          returnTimerRef.current = setTimeout(() => {
+            setPhys({ mode: 'idle', x: 0, y: 0, rotZ: 0 });
+          }, 520);
+        }, 2000);
+        return;
+      }
+      rafRef.current = requestAnimationFrame(step);
+    };
+    rafRef.current = requestAnimationFrame(step);
+  };
+
   const endDrag = (didRelease) => {
     const { dx, dy } = drag;
     const dist = Math.hypot(dx, dy);
@@ -1588,54 +1823,56 @@ function Dice({ value, rolling, onClick, disabled }) {
     const speed = Math.hypot(vx, vy);
     setDrag({ active: false, dx: 0, dy: 0 });
     if (!didRelease || !canInteract) return;
-    // Decide launch direction: use velocity if there is any, else use drag direction
-    const useVel = speed > 250;
-    const dirX = useVel ? vx / speed : (dist > 0 ? dx / dist : 0);
-    const dirY = useVel ? vy / speed : (dist > 0 ? dy / dist : 0);
-    // Power proportional to velocity (for flicks) or drag distance (for aim-and-release)
-    // Capped at viewport so the launched dice can't escape the window either
-    const vw = window.innerWidth, vh = window.innerHeight;
-    const maxPower = Math.min(vw, vh) * 0.45;
-    const power = Math.min(maxPower, Math.max(40, useVel ? speed * 0.22 : dist * 1.3));
-    // Clamp launch target so the flying dice also stays on-screen
-    const { cx, cy, w, h } = diceBoxRef.current;
-    const halfW = w / 2, halfH = h / 2, pad = 4;
-    const minDx = (halfW + pad) - cx;
-    const maxDx = vw - (halfW + pad) - cx;
-    const minDy = (halfH + pad) - cy;
-    const maxDy = vh - (halfH + pad) - cy;
-    const rawLaunchX = dx + dirX * power;
-    const rawLaunchY = dy + dirY * power - 20;
-    const launch = {
-      dx: Math.max(minDx, Math.min(maxDx, rawLaunchX)),
-      dy: Math.max(minDy, Math.min(maxDy, rawLaunchY)),
-      rot: Math.max(-70, Math.min(70, dirX * 55)),
-    };
-    setFlying(launch);
-    // Trigger the actual roll — the dice will start tumbling as it "lands"
+
+    // Determine initial velocity for physics sim
+    let launchVx, launchVy;
+    if (speed > 200) {
+      // Real flick: use measured velocity directly
+      launchVx = vx;
+      launchVy = vy;
+    } else if (dist > 6) {
+      // Held-then-released: fling in drag direction with distance-derived magnitude
+      const mag = Math.max(600, dist * 14);
+      launchVx = (dx / dist) * mag;
+      launchVy = (dy / dist) * mag;
+    } else {
+      // Simple tap: random direction roll with moderate energy
+      const angle = Math.random() * Math.PI * 2;
+      const mag = 700 + Math.random() * 500;
+      launchVx = Math.cos(angle) * mag;
+      launchVy = Math.sin(angle) * mag - 250; // slight upward bias so it "lifts" off the table
+    }
+
+    startPhysics(dx, dy, launchVx, launchVy);
+    // Trigger the actual roll — face will settle when parent sets rolling=false
     onClick?.();
-    // Clear launch pose after animation completes so the cube returns home
-    setTimeout(() => setFlying(null), 420);
   };
 
   const onPointerUp = () => endDrag(true);
   const onPointerCancel = () => endDrag(false);
 
-  // Compose drag/throw outer transform
-  const outerTransform = flying
-    ? `translate(${flying.dx}px, ${flying.dy}px) rotate(${flying.rot}deg)`
-    : drag.active
-      ? `translate(${drag.dx}px, ${drag.dy}px) rotate(${Math.max(-40, Math.min(40, drag.dx * 0.12))}deg) scale(1.04)`
-      : 'translate(0, 0) rotate(0) scale(1)';
-  const outerTransition = drag.active
-    ? 'transform 60ms linear'
-    : flying
-      ? 'transform 180ms cubic-bezier(.25,.85,.4,1.2)'
-      : 'transform 380ms cubic-bezier(.34,1.56,.64,1)';
+  // Compose outer transform from drag / physics / resting / returning
+  let outerTransform, outerTransition;
+  if (drag.active) {
+    outerTransform = `translate(${drag.dx}px, ${drag.dy}px) rotate(${Math.max(-40, Math.min(40, drag.dx * 0.12))}deg) scale(1.04)`;
+    outerTransition = 'transform 60ms linear';
+  } else if (phys.mode === 'flying') {
+    outerTransform = `translate(${phys.x}px, ${phys.y}px) rotate(${phys.rotZ}deg)`;
+    outerTransition = 'none';
+  } else if (phys.mode === 'resting') {
+    outerTransform = `translate(${phys.x}px, ${phys.y}px) rotate(${phys.rotZ}deg)`;
+    outerTransition = 'none';
+  } else if (phys.mode === 'returning') {
+    outerTransform = `translate(0, 0) rotate(0) scale(1)`;
+    outerTransition = 'transform 520ms cubic-bezier(.34,1.26,.64,1)';
+  } else {
+    outerTransform = 'translate(0, 0) rotate(0) scale(1)';
+    outerTransition = 'transform 380ms cubic-bezier(.34,1.56,.64,1)';
+  }
 
   return (
     <button
-      className={`dice3d ${rolling ? 'rolling' : ''} ${drag.active ? 'grabbing' : ''} ${flying ? 'flying' : ''}`}
+      className={`dice3d ${rolling ? 'rolling' : ''} ${drag.active ? 'grabbing' : ''} ${phys.mode !== 'idle' ? 'physics' : ''} ${phys.mode === 'resting' ? 'resting' : ''}`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -1687,8 +1924,10 @@ function Dice({ value, rolling, onClick, disabled }) {
           user-select: none;
         }
         .dice3d.grabbing { cursor: grabbing; }
+        .dice3d.physics, .dice3d.grabbing { z-index: 1000; }
+        .dice3d.resting .d3-cube { filter: drop-shadow(0 10px 22px rgba(0,0,0,0.35)) brightness(1.02); }
         .dice3d:disabled { cursor: not-allowed; opacity: 0.75; }
-        .dice3d:not(:disabled):not(.rolling):not(.grabbing):not(.flying) .d3-cube { animation: dice-breathe 2.2s ease-in-out infinite; }
+        .dice3d:not(:disabled):not(.rolling):not(.grabbing):not(.physics) .d3-cube { animation: dice-breathe 2.2s ease-in-out infinite; }
         @keyframes dice-breathe {
           0%, 100% { filter: drop-shadow(0 4px 8px rgba(0,0,0,0.18)) brightness(1); }
           50% { filter: drop-shadow(0 6px 14px rgba(232,88,62,0.35)) brightness(1.05); }
@@ -2699,6 +2938,45 @@ function Game({ config, onQuit, tweaks = {} }) {
   const [winner, setWinner] = useState(null);
   const [highlight, setHighlight] = useState(null);
   const [confettiKey, setConfettiKey] = useState(0);
+  // Per-frame position overrides (used during spiral slide for exact path-following)
+  const [tokenOverride, setTokenOverride] = useState({}); // { [playerIdx]: { x, y } }
+
+  // Animate a token along the exact spiral path (same geometry the SVG draws).
+  const animateSpiralSlide = async (playerIdx, fromSq, toSq) => {
+    const path = sampleSpiralPath(fromSq, toSq, 28);
+    const totalMs = scaleMs(2200);
+    await new Promise((resolve) => {
+      const startT = performance.now();
+      const step = () => {
+        const now = performance.now();
+        const t = Math.min(1, (now - startT) / totalMs);
+        // Ease so the token accelerates through the top coils and slows slightly at the bottom
+        const eased = t < 0.85 ? (t / 0.85) : (0.85 + (t - 0.85) * 0.7 / 0.15);
+        const seg = eased * (path.length - 1);
+        const idx = Math.min(path.length - 1, Math.floor(seg));
+        const f = seg - idx;
+        const aP = path[idx];
+        const bP = path[Math.min(path.length - 1, idx + 1)];
+        const x = aP.x + (bP.x - aP.x) * f;
+        const y = aP.y + (bP.y - aP.y) * f;
+        setTokenOverride(o => ({ ...o, [playerIdx]: { x, y } }));
+        if (t >= 1) { resolve(); return; }
+        requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
+    // Snap to final square and drop the override so the token relocks to the grid
+    setPositions(p => {
+      const next = [...p];
+      next[playerIdx] = toSq;
+      return next;
+    });
+    setTokenOverride(o => {
+      const n = { ...o };
+      delete n[playerIdx];
+      return n;
+    });
+  };
 
   const aiDifficulty = config.aiDifficulty || 'normal';
   const aiSpeed = scaleMs({ easy: 1600, normal: 1000, hard: 600 }[aiDifficulty]);
@@ -2730,20 +3008,24 @@ function Game({ config, onQuit, tweaks = {} }) {
     setPhase('rolling');
     setRolling(true);
 
-    // shuffle dice display
-    const baseShuffle = T.instantRolls ? 0 : T.diceShuffleMs;
-    const shuffleMs = isAITurn ? scaleMs(Math.max(500, aiSpeed * 0.6)) : scaleMs(baseShuffle);
-    if (shuffleMs > 0) {
+    // Dice does real physics: fling → bounce off walls → settle → show for 2s → return home.
+    // While physics runs we rapidly cycle the visible face so it tumbles dramatically.
+    // Physics duration is ~1.4–1.6s (set inside the Dice component). Match it here.
+    const physicsMs = T.instantRolls ? 0 : scaleMs(1400);
+    if (physicsMs > 0) {
       const start = Date.now();
-      while (Date.now() - start < shuffleMs) {
+      while (Date.now() - start < physicsMs) {
         setDiceValue(1 + Math.floor(Math.random() * 6));
-        await sleep(70);
+        await sleep(80);
       }
     }
 
     const roll = 1 + Math.floor(Math.random() * 6);
     setDiceValue(roll);
-    setRolling(false);
+    setRolling(false); // triggers settle-to-face animation in Dice
+
+    // Hold the result at its landed spot for 2 seconds so the user can read it
+    await sleep(scaleMs(2000));
 
     const player = config.players[current];
     const from = positions[current];
@@ -2809,24 +3091,39 @@ function Game({ config, onQuit, tweaks = {} }) {
         target = dest;
       } else {
         const dest = CHUTES[target];
+        const chuteEntry = CHUTES_LIST.find(c => c.from === target);
         setHighlight(target);
         await sleep(scaleMs(450));
-        setPhase('sliding');
-        addLog({ type: 'chute', player: player.name, from: target, to: dest });
-        if (player.isAI) {
-          setBlipLine(randLine('myChute'));
-          setBlipMood('sad');
-        } else if (isAITurn === false && config.players.some(p => p.isAI)) {
-          setBlipLine(randLine('chute'));
-          setBlipMood('thinking');
+        if (chuteEntry?.spiral) {
+          // Big 3D spiral slide — ride the exact spiral path
+          setPhase('spiraling');
+          addLog({ type: 'chute', player: player.name, from: target, to: dest });
+          if (player.isAI) {
+            setBlipLine("Whooooa — down the spiral!");
+            setBlipMood('sad');
+          } else if (config.players.some(p => p.isAI)) {
+            setBlipLine("The big spiral! Hold on tight!");
+            setBlipMood('happy');
+          }
+          await animateSpiralSlide(current, target, dest);
+        } else {
+          setPhase('sliding');
+          addLog({ type: 'chute', player: player.name, from: target, to: dest });
+          if (player.isAI) {
+            setBlipLine(randLine('myChute'));
+            setBlipMood('sad');
+          } else if (isAITurn === false && config.players.some(p => p.isAI)) {
+            setBlipLine(randLine('chute'));
+            setBlipMood('thinking');
+          }
+          // animate slide: snap to dest with transition
+          setPositions(p => {
+            const next = [...p];
+            next[current] = dest;
+            return next;
+          });
+          await sleep(scaleMs(700));
         }
-        // animate slide: snap to dest with transition
-        setPositions(p => {
-          const next = [...p];
-          next[current] = dest;
-          return next;
-        });
-        await sleep(scaleMs(700));
         setHighlight(null);
         target = dest;
       }
@@ -3038,6 +3335,7 @@ function Game({ config, onQuit, tweaks = {} }) {
             highlightedSquare={highlight}
             tweaks={T}
             phase={phase}
+            tokenOverride={tokenOverride}
           />
 
           {/* Dice + Roll button */}
@@ -3071,6 +3369,7 @@ function Game({ config, onQuit, tweaks = {} }) {
                     {phase === 'sliding' && 'Sliding down! 🪢'}
                     {phase === 'climbing' && 'Climbing up! 🪜'}
                     {phase === 'portaling' && 'Portal! Teleporting… 🌀'}
+                    {phase === 'spiraling' && 'Whoooosh! Down the spiral! 🌀🛝'}
                   </div>
                   <div className="roll-hint mono">SQ. {positions[current]}</div>
                 </>
