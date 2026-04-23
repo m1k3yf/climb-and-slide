@@ -1578,15 +1578,15 @@ function Dice({ value, rolling, onClick, disabled }) {
 
   // During roll: accumulate random full rotations for chaos; settle on the correct target for `value`.
   const [rollTick, setRollTick] = React.useState(0);
-  // Initial pose matches the idle iso offsets (defined below) so the very first render shows
-  // the dice as a clean 3D object — no brief flat frame before the mount effect snaps it.
-  const [currentRot, setCurrentRot] = React.useState({ x: -22, y: 28, tx: 0, ty: 0, bounce: 0 });
+  // Initial pose = face-1 target (0,0). The static view tilt in the transform string
+  // guarantees the first render is already a chunky 3D cube showing face 1 + top + left.
+  const [currentRot, setCurrentRot] = React.useState({ x: 0, y: 0, tx: 0, ty: 0, bounce: 0 });
   const wasRolling = React.useRef(false);
 
-  // Idle-pose offsets: show 3 faces at once (front + top + left) for a clean 3D read at rest.
-  // Applied on initial snap AND as the end point of the settle animation.
-  const IDLE_OFFSET_X = -22;
-  const IDLE_OFFSET_Y = 28;
+  // The cube's inner rotation just brings the rolled face forward (to +Z in cube-local space).
+  // A static -35°X / +35°Y "camera tilt" is applied on top in the transform string, so every
+  // rolled value ends up at the same chunky 3/4-view angle with top + side clearly visible.
+  const idlePoseFor = (v) => faceRotations[v] || faceRotations[1];
 
   // Value is read via a ref so the tumble effect doesn't restart when the parent rapidly
   // cycles `value` during the shuffle. Only `rolling` transitions drive the animation phases.
@@ -1622,13 +1622,13 @@ function Dice({ value, rolling, onClick, disabled }) {
       };
       raf = requestAnimationFrame(tick);
     } else if (wasRolling.current) {
-      // Clean landing at the isometric pose so the rolled face + two neighbors are always visible.
+      // Clean landing at the per-face isometric pose so the rolled face is always dominant.
       wasRolling.current = false;
-      const target = faceRotations[valueRef.current] || faceRotations[1];
+      const idle = idlePoseFor(valueRef.current);
       const from = currentRot;
-      // Land at target + idle iso offset so the cube never ends staring flat at the camera.
-      const finalX = Math.round(from.x / 360) * 360 + target.x + 360 + IDLE_OFFSET_X;
-      const finalY = Math.round(from.y / 360) * 360 + target.y + 360 + IDLE_OFFSET_Y;
+      // Pick nearest multiples of 360 so the settle is a short, natural rotation.
+      const finalX = Math.round((from.x - idle.x) / 360) * 360 + idle.x + 360;
+      const finalY = Math.round((from.y - idle.y) / 360) * 360 + idle.y + 360;
       const startTime = performance.now();
       const dur = 900;
       const tick = (now) => {
@@ -1649,9 +1649,9 @@ function Dice({ value, rolling, onClick, disabled }) {
       };
       raf = requestAnimationFrame(tick);
     } else {
-      // Initial render (or idle refresh): snap to face value at the isometric pose.
-      const target = faceRotations[valueRef.current] || faceRotations[1];
-      setCurrentRot({ x: target.x + IDLE_OFFSET_X, y: target.y + IDLE_OFFSET_Y, tx: 0, ty: 0, bounce: 0 });
+      // Initial render (or idle refresh): snap to the per-face isometric pose.
+      const idle = idlePoseFor(valueRef.current);
+      setCurrentRot({ x: idle.x, y: idle.y, tx: 0, ty: 0, bounce: 0 });
     }
     return () => raf && cancelAnimationFrame(raf);
   }, [rolling]);
@@ -1914,7 +1914,10 @@ function Dice({ value, rolling, onClick, disabled }) {
           <div
             className="d3-cube"
             style={{
-              transform: `translate3d(${currentRot.tx}px, ${currentRot.ty - currentRot.bounce}px, 0) rotateX(${currentRot.x}deg) rotateY(${currentRot.y}deg)`,
+              // Compound rotation: inner cube rotation brings the rolled face forward, then a
+              // STATIC chunky 3/4-view tilt is applied on top — so every rolled value lands at
+              // the same iconic 3D dice angle with top + side clearly visible.
+              transform: `translate3d(${currentRot.tx}px, ${currentRot.ty - currentRot.bounce}px, 0) rotateX(-48deg) rotateY(42deg) rotateX(${currentRot.x}deg) rotateY(${currentRot.y}deg)`,
             }}
           >
             <Face faceVal={1} transform="translateZ(var(--half))"/>
@@ -1942,8 +1945,8 @@ function Dice({ value, rolling, onClick, disabled }) {
           padding: 0;
           cursor: grab;
           position: relative;
-          --size: 72px;
-          --half: 36px;
+          --size: 128px;
+          --half: 64px;
           touch-action: none;
           -webkit-user-select: none;
           user-select: none;
@@ -1959,13 +1962,41 @@ function Dice({ value, rolling, onClick, disabled }) {
           100% { filter: brightness(1) drop-shadow(0 4px 8px rgba(0,0,0,0.2)); }
         }
         .dice3d:disabled { cursor: not-allowed; opacity: 0.75; }
-        .dice3d:not(:disabled):not(.rolling):not(.grabbing):not(.physics) .d3-cube { animation: dice-breathe 2.2s ease-in-out infinite; }
-        @keyframes dice-breathe {
-          0%, 100% { filter: drop-shadow(0 4px 8px rgba(0,0,0,0.18)) brightness(1); }
-          50% { filter: drop-shadow(0 6px 14px rgba(232,88,62,0.35)) brightness(1.05); }
+        /* Idle illumination — the cube emits a warm ambient glow + soft brightness lift so it
+           reads as "alive and ready". Pulses gently to invite interaction. Preserves the 3D cube. */
+        .dice3d:not(:disabled):not(.rolling):not(.grabbing):not(.physics) .d3-cube {
+          animation: dice-illuminate 2.6s ease-in-out infinite;
         }
-        .dice3d:hover:not(:disabled) .d3-cube { filter: brightness(1.08) drop-shadow(0 8px 16px rgba(232,88,62,0.4)); }
-        .dice3d.grabbing .d3-cube { filter: brightness(1.12) drop-shadow(0 10px 22px rgba(232,88,62,0.55)); }
+        @keyframes dice-illuminate {
+          0%, 100% {
+            filter:
+              drop-shadow(0 8px 14px rgba(0,0,0,0.24))
+              drop-shadow(0 0 14px rgba(232,178,62,0.28))
+              brightness(1.04);
+          }
+          50% {
+            filter:
+              drop-shadow(0 10px 20px rgba(0,0,0,0.28))
+              drop-shadow(0 0 22px rgba(232,178,62,0.55))
+              brightness(1.08);
+          }
+        }
+        /* Rolling / physics get a subtle base shadow (no pulsing — the motion itself is the feature) */
+        .dice3d.rolling .d3-cube, .dice3d.physics .d3-cube {
+          filter: drop-shadow(0 10px 18px rgba(0,0,0,0.3)) brightness(1.02);
+        }
+        .dice3d:hover:not(:disabled) .d3-cube {
+          filter:
+            drop-shadow(0 10px 22px rgba(0,0,0,0.32))
+            drop-shadow(0 0 24px rgba(232,178,62,0.7))
+            brightness(1.12);
+        }
+        .dice3d.grabbing .d3-cube {
+          filter:
+            drop-shadow(0 12px 26px rgba(0,0,0,0.35))
+            drop-shadow(0 0 28px rgba(232,88,62,0.65))
+            brightness(1.14);
+        }
         .d3-throw {
           position: absolute;
           inset: 0;
@@ -1976,8 +2007,11 @@ function Dice({ value, rolling, onClick, disabled }) {
         .d3-scene {
           position: absolute;
           inset: 0;
-          perspective: 600px;
-          perspective-origin: 50% 40%;
+          /* Close perspective ≈ 3× cube size gives dramatic foreshortening. Combined with
+             the isometric idle pose, the cube reads as a chunky solid 3D object with top and
+             side faces clearly visible — matching how it looks mid-tumble. */
+          perspective: 380px;
+          perspective-origin: 50% 45%;
           display: flex; align-items: center; justify-content: center;
         }
         .d3-cube {
@@ -1999,12 +2033,12 @@ function Dice({ value, rolling, onClick, disabled }) {
           /* Multiple inset shadows give the face clear beveled edges so it always reads as a solid
              3D surface — even under rapid rotation or at oblique angles. */
           box-shadow:
-            inset 0 0 0 1px rgba(255,255,255,0.9),
-            inset 0 0 0 2px rgba(180,150,100,0.25),
-            inset 0 -5px 12px rgba(120,95,55,0.28),
-            inset 4px 0 10px rgba(120,95,55,0.12),
-            inset -4px 0 10px rgba(120,95,55,0.12),
-            inset 0 3px 5px rgba(255,255,255,0.95);
+            inset 0 0 0 1.5px rgba(90,65,30,0.4),
+            inset 0 0 0 3px rgba(255,255,255,0.85),
+            inset 0 -7px 16px rgba(120,95,55,0.38),
+            inset 6px 0 14px rgba(120,95,55,0.22),
+            inset -6px 0 14px rgba(120,95,55,0.22),
+            inset 0 4px 8px rgba(255,255,255,0.95);
           backface-visibility: hidden;
           padding: 10%;
         }
@@ -3689,9 +3723,9 @@ function Game({ config, onQuit, tweaks = {} }) {
           border: 1px solid rgba(26,31,46,0.08);
         }
         .dice-slot {
-          width: 88px;
+          width: 160px;
           flex-shrink: 0;
-          padding-bottom: 8px;
+          padding-bottom: 12px;
         }
         .roll-info {
           flex: 1;
