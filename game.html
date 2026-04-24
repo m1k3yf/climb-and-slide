@@ -1563,20 +1563,19 @@ function Dice({ value, rolling, onClick, disabled }) {
     6: [[1,1],[1,3],[2,1],[2,3],[3,1],[3,3]],
   };
 
-  // For a standard die: opposite faces sum to 7
-  // Map each face (value 1..6) to its rotation (around X/Y) so it points forward.
-  // Face placements on the cube:
-  //   front: 1, back: 6, right: 2, left: 5, top: 3, bottom: 4
+  // For a standard die: opposite faces sum to 7.
   // Face placements on the cube (via translateZ after a pre-rotation):
-  //   1 → +Z,  6 → -Z,  2 → +X,  5 → -X,  3 → -Y (screen-up),  4 → +Y (screen-down)
-  // Inner rotation to bring each face's normal to +Z (camera) in CSS Y-down space:
+  //   1 → +Z,  6 → -Z,  2 → +X,  5 → -X,  3 → -Y,  4 → +Y
+  // Inner rotation brings the rolled face to +Z (front, facing camera). Combined with the
+  // static 3/4-view outer tilt, the rolled value lands on the dominant visible face of the
+  // cube — exactly like every dice render on the web.
   const faceRotations = {
-    1: { x: 0,   y: 0   },
-    6: { x: 0,   y: 180 },
-    2: { x: 0,   y: -90 },
-    5: { x: 0,   y: 90  },
-    3: { x: -90, y: 0   },
-    4: { x: 90,  y: 0   },
+    1: { x: 0,   y: 0   },  // already at +Z
+    6: { x: 0,   y: 180 },  // -Z → +Z  via rotY(180)
+    2: { x: 0,   y: -90 },  // +X → +Z  via rotY(-90)
+    5: { x: 0,   y: 90  },  // -X → +Z  via rotY(90)
+    3: { x: -90, y: 0   },  // -Y → +Z  via rotX(-90)
+    4: { x: 90,  y: 0   },  // +Y → +Z  via rotX(90)
   };
 
   // During roll: accumulate random full rotations for chaos; settle on the correct target for `value`.
@@ -1958,17 +1957,11 @@ function Dice({ value, rolling, onClick, disabled }) {
           <div
             className="d3-cube"
             style={{
-              // Compound rotation: inner cube rotation brings the rolled face forward, then a
-              // STATIC gentle 3/4-view tilt is applied on top so every rolled value lands at the
-              // same chunky 3D angle (top + front + side always visible). Mild angles keep the
-              // cube looking like a proper cube — not a perspective-distorted rhombus.
-              // VIEW: iconic 3/4 tilt (-28°X, +28°Y) applied on top of the inner face-to-front
-              // rotation. Strong enough to show three distinct planes (rolled face + top + left
-              // peeking neighbors), combined with the shortened perspective (500px) this produces
-              // a clear trapezoidal silhouette — the cube can never look like a flat rhombus.
-              // Math check: rolled face normal ends at z=0.78 (dominant); top at z=0.47; left at
-              // z=0.41 — the displayed value always reads correctly.
-              transform: `translate3d(${currentRot.tx}px, ${currentRot.ty - currentRot.bounce}px, 0) rotateX(-28deg) rotateY(28deg) rotateX(${currentRot.x}deg) rotateY(${currentRot.y}deg)`,
+              // Compound rotation: inner cube rotation brings the rolled face to +Z (front),
+              // then a STATIC gentle 3/4-view tilt (-22°X, +22°Y) is applied on top so every
+              // rolled value lands at the same chunky 3D angle with the rolled face dominant
+              // and neighbors (top + right) visible as slim strips — the classic 3D die look.
+              transform: `translate3d(${currentRot.tx}px, ${currentRot.ty - currentRot.bounce}px, 0) rotateX(-22deg) rotateY(22deg) rotateX(${currentRot.x}deg) rotateY(${currentRot.y}deg)`,
             }}
           >
             <Face faceVal={1} transform="translateZ(var(--half))"/>
@@ -2005,18 +1998,19 @@ function Dice({ value, rolling, onClick, disabled }) {
         }
         .dice3d.grabbing { cursor: grabbing; }
         .dice3d.physics, .dice3d.grabbing { z-index: 1000; }
-        .dice3d.resting .d3-cube { filter: drop-shadow(0 10px 22px rgba(0,0,0,0.35)) brightness(1.02); }
-        /* Brief bright flash on each wall-impact — no transform conflict, preserves the 3D cube. */
-        .dice3d.impact .d3-cube { animation: cube-impact-flash 180ms ease-out; }
+        /* CRITICAL: filters must live on .dice3d (transform-style: flat), NOT on .d3-cube.
+           CSS filters on a preserve-3d element flatten its 3D subtree — the cube collapses
+           into a 2D lens-shape. Apply filter to the flat button wrapper so it composites the
+           already-rendered 3D cube as a 2D layer. */
+        .dice3d.resting { filter: drop-shadow(0 10px 22px rgba(0,0,0,0.35)) brightness(1.02); }
+        .dice3d.impact { animation: cube-impact-flash 180ms ease-out; }
         @keyframes cube-impact-flash {
           0% { filter: brightness(1) drop-shadow(0 4px 8px rgba(0,0,0,0.2)); }
           30% { filter: brightness(1.18) drop-shadow(0 8px 16px rgba(232,178,62,0.55)) drop-shadow(0 0 8px rgba(255,255,255,0.6)); }
           100% { filter: brightness(1) drop-shadow(0 4px 8px rgba(0,0,0,0.2)); }
         }
         .dice3d:disabled { cursor: not-allowed; opacity: 0.75; }
-        /* Idle illumination — the cube emits a warm ambient glow + soft brightness lift so it
-           reads as "alive and ready". Pulses gently to invite interaction. Preserves the 3D cube. */
-        .dice3d:not(:disabled):not(.rolling):not(.grabbing):not(.physics) .d3-cube {
+        .dice3d:not(:disabled):not(.rolling):not(.grabbing):not(.physics):not(.impact) {
           animation: dice-illuminate 2.6s ease-in-out infinite;
         }
         @keyframes dice-illuminate {
@@ -2033,17 +2027,16 @@ function Dice({ value, rolling, onClick, disabled }) {
               brightness(1.08);
           }
         }
-        /* Rolling / physics get a subtle base shadow (no pulsing — the motion itself is the feature) */
-        .dice3d.rolling .d3-cube, .dice3d.physics .d3-cube {
+        .dice3d.rolling, .dice3d.physics {
           filter: drop-shadow(0 10px 18px rgba(0,0,0,0.3)) brightness(1.02);
         }
-        .dice3d:hover:not(:disabled) .d3-cube {
+        .dice3d:hover:not(:disabled) {
           filter:
             drop-shadow(0 10px 22px rgba(0,0,0,0.32))
             drop-shadow(0 0 24px rgba(232,178,62,0.7))
             brightness(1.12);
         }
-        .dice3d.grabbing .d3-cube {
+        .dice3d.grabbing {
           filter:
             drop-shadow(0 12px 26px rgba(0,0,0,0.35))
             drop-shadow(0 0 28px rgba(232,88,62,0.65))
@@ -2059,11 +2052,12 @@ function Dice({ value, rolling, onClick, disabled }) {
         .d3-scene {
           position: absolute;
           inset: 0;
-          /* Punchy perspective (≈3.3× cube size) — back corners compress visibly, forcing a
-             true 3D trapezoidal silhouette at every rotation. Any larger value (800+) makes
-             the cube project near-orthographically and read as a flat tilted square. */
-          perspective: 500px;
+          /* Perspective ≈5× cube size gives a pleasant chunky 3D look without heavy distortion.
+             preserve-3d is required so the cube's faces render in true 3D (otherwise nested
+             transform-style: flat collapses the cube into a thin projected rhombus). */
+          perspective: 800px;
           perspective-origin: 50% 50%;
+          transform-style: preserve-3d;
           display: flex; align-items: center; justify-content: center;
         }
         .d3-cube {
