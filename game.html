@@ -1000,7 +1000,11 @@ function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, t
             0 4px 10px rgba(0,0,0,0.3),
             inset 0 2px 3px rgba(255,255,255,0.4),
             inset 0 -2px 3px rgba(0,0,0,0.2);
-          transition: left 0.45s cubic-bezier(.5,.1,.5,1.4), top 0.45s cubic-bezier(.5,.1,.5,1.4);
+          /* Smooth glide between squares — duration matches the per-step interval below
+             (tokenStepMs ~240ms) so each hop lands cleanly before the next begins. The
+             curve is a gentle ease (no overshoot) so the token feels light and precise
+             rather than jittery / over-corrected. */
+          transition: left 200ms cubic-bezier(0.33, 0, 0.2, 1), top 200ms cubic-bezier(0.33, 0, 0.2, 1);
           z-index: 2;
         }
         .token.robot-token {
@@ -1020,13 +1024,16 @@ function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, t
           0%, 100% { transform: translate(-50%, -55%); }
           50% { transform: translate(-50%, -45%); }
         }
+        /* One hop cycle per square step — duration matches tokenStepMs so each
+           hop peaks mid-glide and lands as the token reaches the next square. */
         .token.hopping {
-          animation: token-hop 0.32s ease-in-out infinite;
+          animation: token-hop 240ms cubic-bezier(0.5, 0, 0.5, 1) infinite;
         }
         @keyframes token-hop {
-          0%, 100% { transform: translate(-50%, -50%) scale(1); }
-          40% { transform: translate(-50%, -90%) scale(1.12); }
-          70% { transform: translate(-50%, -50%) scale(0.92); }
+          0%   { transform: translate(-50%, -50%) scale(1); }
+          45%  { transform: translate(-50%, -82%) scale(1.06); }
+          80%  { transform: translate(-50%, -48%) scale(0.96); }
+          100% { transform: translate(-50%, -50%) scale(1); }
         }
         .token.climbing {
           animation: token-climb 0.45s ease-in-out infinite;
@@ -2781,7 +2788,7 @@ function App() {
     "showActivityLog": true,
     "boardScale": 1,
     "diceShuffleMs": 350,
-    "tokenStepMs": 160,
+    "tokenStepMs": 240,
     "instantRolls": false,
     "showGlidePath": false,
     "rollButtonLabel": "Tap the dice to roll"
@@ -3116,7 +3123,7 @@ function Game({ config, onQuit, tweaks = {} }) {
     showActivityLog: tweaks.showActivityLog ?? true,
     boardScale: tweaks.boardScale ?? 1,
     diceShuffleMs: tweaks.diceShuffleMs ?? 700,
-    tokenStepMs: tweaks.tokenStepMs ?? 160,
+    tokenStepMs: tweaks.tokenStepMs ?? 240,
     instantRolls: tweaks.instantRolls ?? false,
     showGlidePath: tweaks.showGlidePath ?? true,
     rollButtonLabel: tweaks.rollButtonLabel ?? 'Tap the dice to roll',
