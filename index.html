@@ -338,8 +338,12 @@ function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, t
               const cM = color;
               const cD = shadeHex(color, -40);
               const cDD = shadeHex(color, -80);
+              // All portal art is drawn in a LOCAL coord system (translated to the cell
+              // center) so every animated subgroup rotates around its natural origin (0,0).
+              // transform-box: fill-box is unreliable on <g> across browsers — using nested
+              // translate + local coords is the rock-solid approach at any zoom level.
               return (
-                <g key={'p' + from}>
+                <g key={'p' + from} transform={`translate(${p.x} ${p.y})`}>
                   <defs>
                     <radialGradient id={`${uidP}-core`} cx="0.5" cy="0.5" r="0.55">
                       <stop offset="0%" stopColor="#fff" stopOpacity="1"/>
@@ -355,19 +359,18 @@ function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, t
                     </radialGradient>
                   </defs>
                   {/* cast shadow */}
-                  <ellipse cx={p.x + 0.8} cy={p.y + 1.2} rx="5" ry="1.5" fill="#000" opacity="0.3" filter="url(#castShadowSoft)"/>
+                  <ellipse cx="0.8" cy="1.2" rx="5" ry="1.5" fill="#000" opacity="0.3" filter="url(#castShadowSoft)"/>
                   {/* outer ring */}
-                  <circle cx={p.x} cy={p.y} r="4.4" fill={`url(#${uidP}-ring)`}/>
-                  {/* swirl arms.  transform-box: fill-box + transform-origin: center makes the
-                      rotation pivot on the group's own bbox center in SVG user units — so the
-                      animation stays locked to the portal cell at every zoom level. Using CSS
-                      px for transform-origin drifts because px ≠ SVG units after zoom scaling. */}
-                  <g style={{ transformBox: 'fill-box', transformOrigin: 'center', animation: 'portal-spin 4s linear infinite' }}>
-                    {[0, 60, 120, 180, 240, 300].map((deg, i) => (
+                  <circle cx="0" cy="0" r="4.4" fill={`url(#${uidP}-ring)`}/>
+                  {/* swirl arms — rotate around (0,0) which is the cell center in the
+                      translated frame. CSS's default transform-origin for SVG elements is
+                      0 0, so no transform-origin declaration is needed. */}
+                  <g style={{ animation: 'portal-spin 4s linear infinite' }}>
+                    {[0, 60, 120, 180, 240, 300].map((deg) => (
                       <path
-                        key={i}
-                        d={`M ${p.x} ${p.y} m -0.4 0 a 3.4 3.4 0 0 1 3.4 -3.4`}
-                        transform={`rotate(${deg} ${p.x} ${p.y})`}
+                        key={deg}
+                        d="M 0 0 m -0.4 0 a 3.4 3.4 0 0 1 3.4 -3.4"
+                        transform={`rotate(${deg})`}
                         fill="none"
                         stroke={cL}
                         strokeWidth="0.55"
@@ -377,12 +380,12 @@ function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, t
                     ))}
                   </g>
                   {/* inner counter-rotating swirl */}
-                  <g style={{ transformBox: 'fill-box', transformOrigin: 'center', animation: 'portal-spin-rev 2.5s linear infinite' }}>
-                    {[30, 150, 270].map((deg, i) => (
+                  <g style={{ animation: 'portal-spin-rev 2.5s linear infinite' }}>
+                    {[30, 150, 270].map((deg) => (
                       <path
-                        key={i}
-                        d={`M ${p.x} ${p.y} m -0.3 0 a 2.2 2.2 0 0 1 2.2 -2.2`}
-                        transform={`rotate(${deg} ${p.x} ${p.y})`}
+                        key={deg}
+                        d="M 0 0 m -0.3 0 a 2.2 2.2 0 0 1 2.2 -2.2"
+                        transform={`rotate(${deg})`}
                         fill="none"
                         stroke="#fff"
                         strokeWidth="0.45"
@@ -391,18 +394,19 @@ function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, t
                       />
                     ))}
                   </g>
-                  {/* glowing core */}
-                  <circle cx={p.x} cy={p.y} r="3.4" fill={`url(#${uidP}-core)`}
-                    style={{ transformBox: 'fill-box', transformOrigin: 'center', animation: 'portal-pulse 1.6s ease-in-out infinite' }}/>
+                  {/* glowing core — scale pulse naturally pivots on (0,0) since the circle
+                      is centered there, so no transform-origin override is needed. */}
+                  <circle cx="0" cy="0" r="3.4" fill={`url(#${uidP}-core)`}
+                    style={{ animation: 'portal-pulse 1.6s ease-in-out infinite' }}/>
                   {/* star specks orbiting */}
-                  <g style={{ transformBox: 'fill-box', transformOrigin: 'center', animation: 'portal-spin 3s linear infinite' }}>
-                    {[0, 72, 144, 216, 288].map((deg, i) => {
+                  <g style={{ animation: 'portal-spin 3s linear infinite' }}>
+                    {[0, 72, 144, 216, 288].map((deg) => {
                       const rad = 3.9;
                       const ang = deg * Math.PI / 180;
                       return (
-                        <circle key={i}
-                          cx={p.x + Math.cos(ang) * rad}
-                          cy={p.y + Math.sin(ang) * rad}
+                        <circle key={deg}
+                          cx={Math.cos(ang) * rad}
+                          cy={Math.sin(ang) * rad}
                           r="0.35" fill="#fff" opacity="0.95"/>
                       );
                     })}
@@ -480,16 +484,23 @@ function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, t
                     </g>
                   ))}
 
-                  {/* Undercarriage stack for front arches — dark offset layers give the tube
-                      clear thickness floating above the board (matches open-slide style) */}
+                  {/* Undercarriage stack for front arches — deep offset layers make the tube
+                      read as thick extruded plastic floating above the board */}
                   {arches.filter(ar => ar.isFront).map((ar, i) => (
                     <g key={'un' + i}>
+                      {/* deep back-shadow layer */}
                       <path
-                        d={`M ${ar.s.x + 0.9} ${ar.s.y + 1.45} Q ${ar.ctrl.x + 0.9} ${ar.ctrl.y + 1.45} ${ar.e.x + 0.9} ${ar.e.y + 1.45}`}
-                        fill="none" stroke={cDDD} strokeWidth={tubeW + 1.0} strokeLinecap="round" opacity="0.85"/>
+                        d={`M ${ar.s.x + 1.5} ${ar.s.y + 2.3} Q ${ar.ctrl.x + 1.5} ${ar.ctrl.y + 2.3} ${ar.e.x + 1.5} ${ar.e.y + 2.3}`}
+                        fill="none" stroke="#000" strokeWidth={tubeW + 1.3} strokeLinecap="round" opacity="0.35"/>
+                      {/* dark undercarriage body */}
+                      <path
+                        d={`M ${ar.s.x + 0.95} ${ar.s.y + 1.5} Q ${ar.ctrl.x + 0.95} ${ar.ctrl.y + 1.5} ${ar.e.x + 0.95} ${ar.e.y + 1.5}`}
+                        fill="none" stroke={cDDD} strokeWidth={tubeW + 0.9} strokeLinecap="round"/>
+                      {/* mid undercarriage */}
                       <path
                         d={`M ${ar.s.x + 0.55} ${ar.s.y + 0.9} Q ${ar.ctrl.x + 0.55} ${ar.ctrl.y + 0.9} ${ar.e.x + 0.55} ${ar.e.y + 0.9}`}
                         fill="none" stroke={cDDD} strokeWidth={tubeW + 0.5} strokeLinecap="round"/>
+                      {/* top of undercarriage (lighter rim just below tube) */}
                       <path
                         d={`M ${ar.s.x + 0.25} ${ar.s.y + 0.45} Q ${ar.ctrl.x + 0.25} ${ar.ctrl.y + 0.45} ${ar.e.x + 0.25} ${ar.e.y + 0.45}`}
                         fill="none" stroke={cDD} strokeWidth={tubeW + 0.2} strokeLinecap="round"/>
@@ -509,12 +520,13 @@ function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, t
                     );
                   })}
 
-                  {/* FRONT arches — bright, thick, heavy outlines for "pop" */}
+                  {/* FRONT arches — chunky segmented pipe look */}
                   {arches.filter(ar => ar.isFront).map((ar, i) => {
-                    // Sample perpendicular cross-ridges along the tube — gives the closed
-                    // tube a ribbed surface texture matching the open-slide cross-ridges.
-                    const ridges = [];
-                    const N = 10;
+                    // Sample RING-BANDS along the tube — visible joint rings like a real
+                    // segmented waterslide. Each ring is an ellipse whose long axis is
+                    // perpendicular to the tube tangent, so it wraps across the tube.
+                    const rings = [];
+                    const N = 7;
                     for (let k = 1; k < N; k++) {
                       const t = k / N;
                       const mt = 1 - t;
@@ -522,42 +534,43 @@ function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, t
                       const y = mt*mt*ar.s.y + 2*mt*t*ar.ctrl.y + t*t*ar.e.y;
                       const tx = 2*mt*(ar.ctrl.x - ar.s.x) + 2*t*(ar.e.x - ar.ctrl.x);
                       const ty = 2*mt*(ar.ctrl.y - ar.s.y) + 2*t*(ar.e.y - ar.ctrl.y);
-                      const L = Math.hypot(tx, ty) || 1;
-                      const pnx = -ty / L, pny = tx / L;
-                      const w2 = tubeW * 0.45;
-                      ridges.push({
-                        x1: x + pnx * w2, y1: y + pny * w2,
-                        x2: x - pnx * w2, y2: y - pny * w2,
-                      });
+                      const angleDeg = Math.atan2(ty, tx) * 180 / Math.PI;
+                      rings.push({ x, y, angleDeg });
                     }
                     return (
                       <g key={'fr' + i}>
-                        {/* Heavy dark outer rim */}
+                        {/* Heavy dark outer rim (gives the tube a pronounced outline) */}
                         <path
                           d={`M ${ar.s.x} ${ar.s.y} Q ${ar.ctrl.x} ${ar.ctrl.y} ${ar.e.x} ${ar.e.y}`}
-                          fill="none" stroke={cDDD} strokeWidth={tubeW + 1.6} strokeLinecap="round"/>
-                        {/* Mid-tone tube body */}
+                          fill="none" stroke={cDDD} strokeWidth={tubeW + 1.8} strokeLinecap="round"/>
+                        {/* Mid-tone tube body with cylindrical gradient */}
                         <path
                           d={`M ${ar.s.x} ${ar.s.y} Q ${ar.ctrl.x} ${ar.ctrl.y} ${ar.e.x} ${ar.e.y}`}
                           fill="none" stroke={`url(#${uidS}-tube)`} strokeWidth={tubeW + 0.2} strokeLinecap="round"/>
-                        {/* Cross-ridges (ribbed texture wrapping the tube) */}
-                        {ridges.map((r, k) => (
-                          <line key={'rd' + k}
-                            x1={r.x1} y1={r.y1} x2={r.x2} y2={r.y2}
-                            stroke={cDDD} strokeWidth="0.2" strokeLinecap="round" opacity="0.5"/>
+                        {/* Segment RING-BANDS wrapping the tube (visible pipe joints).
+                            Each ring is a thin ellipse rotated so its long axis is
+                            perpendicular to the tube tangent, creating a 3D hoop around
+                            the tube. Overall highlight/shadow bands drawn later shade them
+                            top-to-bottom automatically. */}
+                        {rings.map((r, k) => (
+                          <ellipse key={'rg' + k}
+                            cx={r.x} cy={r.y}
+                            rx="0.42" ry={tubeW * 0.58}
+                            transform={`rotate(${r.angleDeg} ${r.x} ${r.y})`}
+                            fill={cDDD} opacity="0.75"/>
                         ))}
-                        {/* Highlight band along top (where light hits) */}
+                        {/* Highlight band along top of tube (light source from above) */}
                         <path
-                          d={`M ${ar.s.x} ${ar.s.y - 0.45} Q ${ar.ctrl.x} ${ar.ctrl.y - 0.7} ${ar.e.x} ${ar.e.y - 0.45}`}
-                          fill="none" stroke={cL} strokeWidth="1.1" strokeLinecap="round" opacity="0.95"/>
+                          d={`M ${ar.s.x} ${ar.s.y - 0.5} Q ${ar.ctrl.x} ${ar.ctrl.y - 0.75} ${ar.e.x} ${ar.e.y - 0.5}`}
+                          fill="none" stroke={cL} strokeWidth="1.2" strokeLinecap="round" opacity="0.95"/>
                         {/* Glossy white shine */}
                         <path
-                          d={`M ${ar.s.x + 0.3} ${ar.s.y - 0.58} Q ${ar.ctrl.x} ${ar.ctrl.y - 0.9} ${ar.e.x - 0.3} ${ar.e.y - 0.58}`}
-                          fill="none" stroke="#fff" strokeWidth="0.5" strokeLinecap="round" opacity="0.85"/>
-                        {/* Deep bottom shadow line (reinforces cylindrical roundness) */}
+                          d={`M ${ar.s.x + 0.3} ${ar.s.y - 0.65} Q ${ar.ctrl.x} ${ar.ctrl.y - 1.0} ${ar.e.x - 0.3} ${ar.e.y - 0.65}`}
+                          fill="none" stroke="#fff" strokeWidth="0.55" strokeLinecap="round" opacity="0.9"/>
+                        {/* Deep bottom shadow line reinforcing cylindrical roundness */}
                         <path
-                          d={`M ${ar.s.x} ${ar.s.y + 0.5} Q ${ar.ctrl.x} ${ar.ctrl.y + 0.7} ${ar.e.x} ${ar.e.y + 0.5}`}
-                          fill="none" stroke={cDDD} strokeWidth="0.85" strokeLinecap="round" opacity="0.7"/>
+                          d={`M ${ar.s.x} ${ar.s.y + 0.55} Q ${ar.ctrl.x} ${ar.ctrl.y + 0.8} ${ar.e.x} ${ar.e.y + 0.55}`}
+                          fill="none" stroke={cDDD} strokeWidth="1.0" strokeLinecap="round" opacity="0.75"/>
                       </g>
                     );
                   })}
