@@ -358,8 +358,11 @@ function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, t
                   <ellipse cx={p.x + 0.8} cy={p.y + 1.2} rx="5" ry="1.5" fill="#000" opacity="0.3" filter="url(#castShadowSoft)"/>
                   {/* outer ring */}
                   <circle cx={p.x} cy={p.y} r="4.4" fill={`url(#${uidP}-ring)`}/>
-                  {/* swirl arms */}
-                  <g style={{ transformOrigin: `${p.x}px ${p.y}px`, animation: 'portal-spin 4s linear infinite' }}>
+                  {/* swirl arms.  transform-box: fill-box + transform-origin: center makes the
+                      rotation pivot on the group's own bbox center in SVG user units — so the
+                      animation stays locked to the portal cell at every zoom level. Using CSS
+                      px for transform-origin drifts because px ≠ SVG units after zoom scaling. */}
+                  <g style={{ transformBox: 'fill-box', transformOrigin: 'center', animation: 'portal-spin 4s linear infinite' }}>
                     {[0, 60, 120, 180, 240, 300].map((deg, i) => (
                       <path
                         key={i}
@@ -374,7 +377,7 @@ function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, t
                     ))}
                   </g>
                   {/* inner counter-rotating swirl */}
-                  <g style={{ transformOrigin: `${p.x}px ${p.y}px`, animation: 'portal-spin-rev 2.5s linear infinite' }}>
+                  <g style={{ transformBox: 'fill-box', transformOrigin: 'center', animation: 'portal-spin-rev 2.5s linear infinite' }}>
                     {[30, 150, 270].map((deg, i) => (
                       <path
                         key={i}
@@ -390,9 +393,9 @@ function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, t
                   </g>
                   {/* glowing core */}
                   <circle cx={p.x} cy={p.y} r="3.4" fill={`url(#${uidP}-core)`}
-                    style={{ animation: 'portal-pulse 1.6s ease-in-out infinite' }}/>
+                    style={{ transformBox: 'fill-box', transformOrigin: 'center', animation: 'portal-pulse 1.6s ease-in-out infinite' }}/>
                   {/* star specks orbiting */}
-                  <g style={{ transformOrigin: `${p.x}px ${p.y}px`, animation: 'portal-spin 3s linear infinite' }}>
+                  <g style={{ transformBox: 'fill-box', transformOrigin: 'center', animation: 'portal-spin 3s linear infinite' }}>
                     {[0, 72, 144, 216, 288].map((deg, i) => {
                       const rad = 3.9;
                       const ang = deg * Math.PI / 180;
@@ -477,6 +480,22 @@ function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, t
                     </g>
                   ))}
 
+                  {/* Undercarriage stack for front arches — dark offset layers give the tube
+                      clear thickness floating above the board (matches open-slide style) */}
+                  {arches.filter(ar => ar.isFront).map((ar, i) => (
+                    <g key={'un' + i}>
+                      <path
+                        d={`M ${ar.s.x + 0.9} ${ar.s.y + 1.45} Q ${ar.ctrl.x + 0.9} ${ar.ctrl.y + 1.45} ${ar.e.x + 0.9} ${ar.e.y + 1.45}`}
+                        fill="none" stroke={cDDD} strokeWidth={tubeW + 1.0} strokeLinecap="round" opacity="0.85"/>
+                      <path
+                        d={`M ${ar.s.x + 0.55} ${ar.s.y + 0.9} Q ${ar.ctrl.x + 0.55} ${ar.ctrl.y + 0.9} ${ar.e.x + 0.55} ${ar.e.y + 0.9}`}
+                        fill="none" stroke={cDDD} strokeWidth={tubeW + 0.5} strokeLinecap="round"/>
+                      <path
+                        d={`M ${ar.s.x + 0.25} ${ar.s.y + 0.45} Q ${ar.ctrl.x + 0.25} ${ar.ctrl.y + 0.45} ${ar.e.x + 0.25} ${ar.e.y + 0.45}`}
+                        fill="none" stroke={cDD} strokeWidth={tubeW + 0.2} strokeLinecap="round"/>
+                    </g>
+                  ))}
+
                   {/* Inner-tube "bore" cross-sections at each coil junction — reads as hollow 3D tube */}
                   {boundaries.map((bp, i) => {
                     if (i === 0 || i === boundaries.length - 1) return null;
@@ -491,30 +510,57 @@ function Board({ players, currentPlayerIdx, tokenPositions, highlightedSquare, t
                   })}
 
                   {/* FRONT arches — bright, thick, heavy outlines for "pop" */}
-                  {arches.filter(ar => ar.isFront).map((ar, i) => (
-                    <g key={'fr' + i}>
-                      {/* Heavy dark outer rim */}
-                      <path
-                        d={`M ${ar.s.x} ${ar.s.y} Q ${ar.ctrl.x} ${ar.ctrl.y} ${ar.e.x} ${ar.e.y}`}
-                        fill="none" stroke={cDDD} strokeWidth={tubeW + 1.4} strokeLinecap="round"/>
-                      {/* Mid-tone tube body */}
-                      <path
-                        d={`M ${ar.s.x} ${ar.s.y} Q ${ar.ctrl.x} ${ar.ctrl.y} ${ar.e.x} ${ar.e.y}`}
-                        fill="none" stroke={`url(#${uidS}-tube)`} strokeWidth={tubeW + 0.2} strokeLinecap="round"/>
-                      {/* Highlight band along top (where light hits) */}
-                      <path
-                        d={`M ${ar.s.x} ${ar.s.y - 0.45} Q ${ar.ctrl.x} ${ar.ctrl.y - 0.65} ${ar.e.x} ${ar.e.y - 0.45}`}
-                        fill="none" stroke={cL} strokeWidth="1.0" strokeLinecap="round" opacity="0.9"/>
-                      {/* Glossy white shine */}
-                      <path
-                        d={`M ${ar.s.x + 0.3} ${ar.s.y - 0.55} Q ${ar.ctrl.x} ${ar.ctrl.y - 0.85} ${ar.e.x - 0.3} ${ar.e.y - 0.55}`}
-                        fill="none" stroke="#fff" strokeWidth="0.45" strokeLinecap="round" opacity="0.8"/>
-                      {/* Subtle bottom shadow line */}
-                      <path
-                        d={`M ${ar.s.x} ${ar.s.y + 0.45} Q ${ar.ctrl.x} ${ar.ctrl.y + 0.6} ${ar.e.x} ${ar.e.y + 0.45}`}
-                        fill="none" stroke={cDDD} strokeWidth="0.7" strokeLinecap="round" opacity="0.55"/>
-                    </g>
-                  ))}
+                  {arches.filter(ar => ar.isFront).map((ar, i) => {
+                    // Sample perpendicular cross-ridges along the tube — gives the closed
+                    // tube a ribbed surface texture matching the open-slide cross-ridges.
+                    const ridges = [];
+                    const N = 10;
+                    for (let k = 1; k < N; k++) {
+                      const t = k / N;
+                      const mt = 1 - t;
+                      const x = mt*mt*ar.s.x + 2*mt*t*ar.ctrl.x + t*t*ar.e.x;
+                      const y = mt*mt*ar.s.y + 2*mt*t*ar.ctrl.y + t*t*ar.e.y;
+                      const tx = 2*mt*(ar.ctrl.x - ar.s.x) + 2*t*(ar.e.x - ar.ctrl.x);
+                      const ty = 2*mt*(ar.ctrl.y - ar.s.y) + 2*t*(ar.e.y - ar.ctrl.y);
+                      const L = Math.hypot(tx, ty) || 1;
+                      const pnx = -ty / L, pny = tx / L;
+                      const w2 = tubeW * 0.45;
+                      ridges.push({
+                        x1: x + pnx * w2, y1: y + pny * w2,
+                        x2: x - pnx * w2, y2: y - pny * w2,
+                      });
+                    }
+                    return (
+                      <g key={'fr' + i}>
+                        {/* Heavy dark outer rim */}
+                        <path
+                          d={`M ${ar.s.x} ${ar.s.y} Q ${ar.ctrl.x} ${ar.ctrl.y} ${ar.e.x} ${ar.e.y}`}
+                          fill="none" stroke={cDDD} strokeWidth={tubeW + 1.6} strokeLinecap="round"/>
+                        {/* Mid-tone tube body */}
+                        <path
+                          d={`M ${ar.s.x} ${ar.s.y} Q ${ar.ctrl.x} ${ar.ctrl.y} ${ar.e.x} ${ar.e.y}`}
+                          fill="none" stroke={`url(#${uidS}-tube)`} strokeWidth={tubeW + 0.2} strokeLinecap="round"/>
+                        {/* Cross-ridges (ribbed texture wrapping the tube) */}
+                        {ridges.map((r, k) => (
+                          <line key={'rd' + k}
+                            x1={r.x1} y1={r.y1} x2={r.x2} y2={r.y2}
+                            stroke={cDDD} strokeWidth="0.2" strokeLinecap="round" opacity="0.5"/>
+                        ))}
+                        {/* Highlight band along top (where light hits) */}
+                        <path
+                          d={`M ${ar.s.x} ${ar.s.y - 0.45} Q ${ar.ctrl.x} ${ar.ctrl.y - 0.7} ${ar.e.x} ${ar.e.y - 0.45}`}
+                          fill="none" stroke={cL} strokeWidth="1.1" strokeLinecap="round" opacity="0.95"/>
+                        {/* Glossy white shine */}
+                        <path
+                          d={`M ${ar.s.x + 0.3} ${ar.s.y - 0.58} Q ${ar.ctrl.x} ${ar.ctrl.y - 0.9} ${ar.e.x - 0.3} ${ar.e.y - 0.58}`}
+                          fill="none" stroke="#fff" strokeWidth="0.5" strokeLinecap="round" opacity="0.85"/>
+                        {/* Deep bottom shadow line (reinforces cylindrical roundness) */}
+                        <path
+                          d={`M ${ar.s.x} ${ar.s.y + 0.5} Q ${ar.ctrl.x} ${ar.ctrl.y + 0.7} ${ar.e.x} ${ar.e.y + 0.5}`}
+                          fill="none" stroke={cDDD} strokeWidth="0.85" strokeLinecap="round" opacity="0.7"/>
+                      </g>
+                    );
+                  })}
 
                   {/* Entry funnel — dramatic opening at top of slide */}
                   <g transform={`translate(${a.x} ${a.y})`}>
@@ -1990,8 +2036,8 @@ function Dice({ value, rolling, onClick, disabled }) {
           padding: 0;
           cursor: grab;
           position: relative;
-          --size: 150px;
-          --half: 75px;
+          --size: 105px;
+          --half: 52.5px;
           touch-action: none;
           -webkit-user-select: none;
           user-select: none;
