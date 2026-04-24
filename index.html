@@ -1583,9 +1583,10 @@ function Dice({ value, rolling, onClick, disabled }) {
   const [currentRot, setCurrentRot] = React.useState({ x: 0, y: 0, tx: 0, ty: 0, bounce: 0 });
   const wasRolling = React.useRef(false);
 
-  // The cube's inner rotation just brings the rolled face forward (to +Z in cube-local space).
-  // A static -35°X / +35°Y "camera tilt" is applied on top in the transform string, so every
-  // rolled value ends up at the same chunky 3/4-view angle with top + side clearly visible.
+  // The cube's inner rotation brings the rolled face to +Z (front). A static view tilt
+  // (rotateX -45°, rotateY +25°) applied on top in the transform string gives every rolled
+  // face the same chunky 3D angle — rolled face dominant, top and left neighbors visible.
+  // Empirically tuned to match the iconic "rolled dice" Rolling visual.
   const idlePoseFor = (v) => faceRotations[v] || faceRotations[1];
 
   // Value is read via a ref so the tumble effect doesn't restart when the parent rapidly
@@ -1622,7 +1623,7 @@ function Dice({ value, rolling, onClick, disabled }) {
       };
       raf = requestAnimationFrame(tick);
     } else if (wasRolling.current) {
-      // Clean landing at the per-face isometric pose so the rolled face is always dominant.
+      // Clean landing at the face-up pose so the rolled face ends on +Y (top of cube).
       wasRolling.current = false;
       const idle = idlePoseFor(valueRef.current);
       const from = currentRot;
@@ -1649,7 +1650,7 @@ function Dice({ value, rolling, onClick, disabled }) {
       };
       raf = requestAnimationFrame(tick);
     } else {
-      // Initial render (or idle refresh): snap to the per-face isometric pose.
+      // Initial render (or idle refresh): snap to the target face rotation.
       const idle = idlePoseFor(valueRef.current);
       setCurrentRot({ x: idle.x, y: idle.y, tx: 0, ty: 0, bounce: 0 });
     }
@@ -1915,9 +1916,13 @@ function Dice({ value, rolling, onClick, disabled }) {
             className="d3-cube"
             style={{
               // Compound rotation: inner cube rotation brings the rolled face forward, then a
-              // STATIC chunky 3/4-view tilt is applied on top — so every rolled value lands at
-              // the same iconic 3D dice angle with top + side clearly visible.
-              transform: `translate3d(${currentRot.tx}px, ${currentRot.ty - currentRot.bounce}px, 0) rotateX(-48deg) rotateY(42deg) rotateX(${currentRot.x}deg) rotateY(${currentRot.y}deg)`,
+              // STATIC gentle 3/4-view tilt is applied on top so every rolled value lands at the
+              // same chunky 3D angle (top + front + side always visible). Mild angles keep the
+              // cube looking like a proper cube — not a perspective-distorted rhombus.
+              // VIEW: chunky 3/4 tilt (-45° X, +25° Y) applied on top of the inner cube rotation
+              // that brings the rolled face to front. Empirically tuned to match the iconic
+              // Rolling visual — rolled face dominant with top + left neighbors clearly visible.
+              transform: `translate3d(${currentRot.tx}px, ${currentRot.ty - currentRot.bounce}px, 0) rotateX(-45deg) rotateY(25deg) rotateX(${currentRot.x}deg) rotateY(${currentRot.y}deg)`,
             }}
           >
             <Face faceVal={1} transform="translateZ(var(--half))"/>
@@ -1945,8 +1950,8 @@ function Dice({ value, rolling, onClick, disabled }) {
           padding: 0;
           cursor: grab;
           position: relative;
-          --size: 128px;
-          --half: 64px;
+          --size: 150px;
+          --half: 75px;
           touch-action: none;
           -webkit-user-select: none;
           user-select: none;
@@ -2007,11 +2012,10 @@ function Dice({ value, rolling, onClick, disabled }) {
         .d3-scene {
           position: absolute;
           inset: 0;
-          /* Close perspective ≈ 3× cube size gives dramatic foreshortening. Combined with
-             the isometric idle pose, the cube reads as a chunky solid 3D object with top and
-             side faces clearly visible — matching how it looks mid-tumble. */
-          perspective: 380px;
-          perspective-origin: 50% 45%;
+          /* Moderate perspective (≈6× cube size) — enough depth to read as 3D, not so close
+             that rotations produce perspective-warped rhombus shapes. */
+          perspective: 800px;
+          perspective-origin: 50% 50%;
           display: flex; align-items: center; justify-content: center;
         }
         .d3-cube {
@@ -3723,7 +3727,7 @@ function Game({ config, onQuit, tweaks = {} }) {
           border: 1px solid rgba(26,31,46,0.08);
         }
         .dice-slot {
-          width: 160px;
+          width: 184px;
           flex-shrink: 0;
           padding-bottom: 12px;
         }
