@@ -1567,6 +1567,9 @@ function Dice({ value, rolling, onClick, disabled }) {
   // Map each face (value 1..6) to its rotation (around X/Y) so it points forward.
   // Face placements on the cube:
   //   front: 1, back: 6, right: 2, left: 5, top: 3, bottom: 4
+  // Face placements on the cube (via translateZ after a pre-rotation):
+  //   1 → +Z,  6 → -Z,  2 → +X,  5 → -X,  3 → -Y (screen-up),  4 → +Y (screen-down)
+  // Inner rotation to bring each face's normal to +Z (camera) in CSS Y-down space:
   const faceRotations = {
     1: { x: 0,   y: 0   },
     6: { x: 0,   y: 180 },
@@ -1580,7 +1583,8 @@ function Dice({ value, rolling, onClick, disabled }) {
   const [rollTick, setRollTick] = React.useState(0);
   // Initial pose = face-1 target (0,0). The static view tilt in the transform string
   // guarantees the first render is already a chunky 3D cube showing face 1 + top + left.
-  const [currentRot, setCurrentRot] = React.useState({ x: 0, y: 0, tx: 0, ty: 0, bounce: 0 });
+  // z: tumble rotation on cube's own Z axis; squash: landing compression (1=neutral, <1=squashed)
+  const [currentRot, setCurrentRot] = React.useState({ x: 0, y: 0, z: 0, tx: 0, ty: 0, bounce: 0, squash: 1 });
   const wasRolling = React.useRef(false);
 
   // The cube's inner rotation brings the rolled face to +Z (front). A static view tilt
@@ -1618,7 +1622,7 @@ function Dice({ value, rolling, onClick, disabled }) {
         const bounce = Math.max(0, (1 - Math.min(1, t / 1.0))) * 12;
         const tx = Math.sin(t * 14) * 2.2;
         const ty = Math.cos(t * 11) * 1.8;
-        setCurrentRot({ x, y, tx, ty, bounce });
+        setCurrentRot({ x, y, z: 0, tx, ty, bounce, squash: 1 });
         raf = requestAnimationFrame(tick);
       };
       raf = requestAnimationFrame(tick);
@@ -1627,7 +1631,8 @@ function Dice({ value, rolling, onClick, disabled }) {
       wasRolling.current = false;
       const idle = idlePoseFor(valueRef.current);
       const from = currentRot;
-      // Pick nearest multiples of 360 so the settle is a short, natural rotation.
+      // Pick nearest multiples of 360 so the settle ends EXACTLY at the face-rotation for `value`,
+      // guaranteeing the face displayed matches the rolled number. No extra axes to confuse alignment.
       const finalX = Math.round((from.x - idle.x) / 360) * 360 + idle.x + 360;
       const finalY = Math.round((from.y - idle.y) / 360) * 360 + idle.y + 360;
       const startTime = performance.now();
@@ -1642,9 +1647,11 @@ function Dice({ value, rolling, onClick, disabled }) {
         setCurrentRot({
           x: from.x + (finalX - from.x) * e + wobble * 0.5,
           y: from.y + (finalY - from.y) * e + wobble,
+          z: 0,
           tx: from.tx * (1 - e),
           ty: from.ty * (1 - e) - tableBounce,
           bounce: tableBounce,
+          squash: 1,
         });
         if (p < 1) raf = requestAnimationFrame(tick);
       };
@@ -1652,7 +1659,7 @@ function Dice({ value, rolling, onClick, disabled }) {
     } else {
       // Initial render (or idle refresh): snap to the target face rotation.
       const idle = idlePoseFor(valueRef.current);
-      setCurrentRot({ x: idle.x, y: idle.y, tx: 0, ty: 0, bounce: 0 });
+      setCurrentRot({ x: idle.x, y: idle.y, z: 0, tx: 0, ty: 0, bounce: 0, squash: 1 });
     }
     return () => raf && cancelAnimationFrame(raf);
   }, [rolling]);
@@ -1666,16 +1673,26 @@ function Dice({ value, rolling, onClick, disabled }) {
     <span className="d3-pip" style={{ gridRow: r, gridColumn: c }}/>
   );
 
+  // Face pairs are tinted so opposite faces (which are never both visible) share a shade,
+  // but each of the three visible-at-once faces has a distinct baseline brightness. This is
+  // what sells the 3D illusion: three differently-shaded planes read as a real cube, even
+  // when gentle tilts + gentle perspective would otherwise flatten into a rounded rhombus.
+  //   pair {1,6}: medium (hero face)
+  //   pair {2,5}: darker (left/right shade)
+  //   pair {3,4}: brighter (top/bottom — catches the most 'light')
+  const faceShade = {
+    1: 'medium', 6: 'medium',
+    2: 'darker', 5: 'darker',
+    3: 'brighter', 4: 'brighter',
+  };
+
   const Face = ({ faceVal, transform }) => (
-    <div className="d3-face" style={{ transform }}>
+    <div className={`d3-face shade-${faceShade[faceVal]}`} style={{ transform }}>
       <div className="d3-pips">
         {faces[faceVal].map(([r, c], i) => <Pip key={i} r={r} c={c}/>)}
       </div>
     </div>
   );
-
-  const shadowScale = 1 + currentRot.bounce / 40;
-  const shadowOpacity = Math.max(0.15, 0.45 - currentRot.bounce / 50);
 
   // ==== Throw gesture + physics simulation ====
   // The dice behaves like a real die rolling on a table: it has velocity, decelerates via
@@ -1683,7 +1700,8 @@ function Dice({ value, rolling, onClick, disabled }) {
   // for ~2s so the user can read the result, then returns to its home spot.
   const [drag, setDrag] = React.useState({ active: false, dx: 0, dy: 0 });
   // phys mode: 'idle' | 'flying' | 'resting' | 'returning'
-  const [phys, setPhys] = React.useState({ mode: 'idle', x: 0, y: 0, rotZ: 0 });
+  // height: simulated Z-lift in px (die airborne); derived from current speed during flight
+  const [phys, setPhys] = React.useState({ mode: 'idle', x: 0, y: 0, rotZ: 0, height: 0 });
   const startRef = React.useRef({ x: 0, y: 0 });
   const lastMoveRef = React.useRef({ x: 0, y: 0, t: 0 });
   const velRef = React.useRef({ vx: 0, vy: 0 });
@@ -1693,7 +1711,7 @@ function Dice({ value, rolling, onClick, disabled }) {
   const restTimerRef = React.useRef(null);
   const returnTimerRef = React.useRef(null);
 
-  const canInteract = !disabled && !rolling && phys.mode !== 'flying' && phys.mode !== 'resting' && phys.mode !== 'returning';
+  const canInteract = !disabled && !rolling && phys.mode === 'idle';
 
   const cancelTimers = () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -1812,23 +1830,34 @@ function Dice({ value, rolling, onClick, disabled }) {
         }
       }
 
-      setPhys({ mode: 'flying', x: p.x, y: p.y, rotZ: p.rotZ });
-
+      // Height arc: while the die is moving fast it's "in the air"; as it slows it settles down.
+      // This sells the Z-depth illusion — cube lifts on fling, shadow expands below it.
       const speed = Math.hypot(p.vx, p.vy);
+      const height = Math.min(90, speed * 0.085);
+      setPhys({ mode: 'flying', x: p.x, y: p.y, rotZ: p.rotZ, height });
+
       const elapsed = (now - p.startT) / 1000;
       // Settle when the dice is nearly stopped or we hit the physics time limit.
-      // Briefly "plant" at the landing spot (250ms so the user registers the impact), then
-      // spring home — the rolled face will be clearly visible at home for the 2s hold.
+      // Sequence: flying → landing (snap squash) → resting (elastic recover) → returning home.
       if ((speed < 22 && elapsed > 0.35) || elapsed > 1.4) {
         p.running = false;
         rafRef.current = null;
-        setPhys({ mode: 'resting', x: p.x, y: p.y, rotZ: p.rotZ });
+        // Snap into a squashed landing pose — transform-transition is disabled in 'landing',
+        // so this renders instantly like a real impact compression.
+        setPhys({ mode: 'landing', x: p.x, y: p.y, rotZ: p.rotZ, height: 0 });
+        // One frame later, switch to 'resting' — transform transitions back to natural scale
+        // via the elastic easing curve on .d3-throw, producing a springy bounce-back.
         restTimerRef.current = setTimeout(() => {
-          setPhys({ mode: 'returning', x: 0, y: 0, rotZ: 0 });
+          setPhys({ mode: 'resting', x: p.x, y: p.y, rotZ: p.rotZ, height: 0 });
+          // After squash recover + brief rest, spring home so the rolled face is clearly
+          // visible at the home slot for the 2s hold the game layer enforces.
           returnTimerRef.current = setTimeout(() => {
-            setPhys({ mode: 'idle', x: 0, y: 0, rotZ: 0 });
-          }, 520);
-        }, 250);
+            setPhys({ mode: 'returning', x: 0, y: 0, rotZ: 0, height: 0 });
+            setTimeout(() => {
+              setPhys({ mode: 'idle', x: 0, y: 0, rotZ: 0, height: 0 });
+            }, 520);
+          }, 360);
+        }, 16);
         return;
       }
       rafRef.current = requestAnimationFrame(step);
@@ -1871,6 +1900,13 @@ function Dice({ value, rolling, onClick, disabled }) {
   const onPointerUp = () => endDrag(true);
   const onPointerCancel = () => endDrag(false);
 
+  // Ground shadow: bigger + softer + dimmer while airborne, tight + dark when planted.
+  // Responds to both tumble bounce and physics flight height for a unified "weight on ground" feel.
+  const airborne = (phys.mode === 'flying' ? phys.height : 0);
+  const shadowScale = 1 + currentRot.bounce / 40 + airborne / 55;
+  const shadowOpacity = Math.max(0.08, 0.5 - currentRot.bounce / 50 - airborne / 160);
+  const shadowBlur = 3 + airborne / 18;
+
   // Compose outer transform from drag / physics / resting / returning.
   // IMPORTANT: during physics we intentionally use translate ONLY. 2D rotation on the outer
   // wrapper flattens the perspective illusion — the dice must stay a clean 3D object at all
@@ -1881,13 +1917,20 @@ function Dice({ value, rolling, onClick, disabled }) {
     outerTransform = `translate(${drag.dx}px, ${drag.dy}px) scale(1.05)`;
     outerTransition = 'transform 60ms linear';
   } else if (phys.mode === 'flying') {
-    outerTransform = `translate(${phys.x}px, ${phys.y}px)`;
+    // translateY minus height simulates Z-lift (die airborne); scale grows slightly with height
+    // so it reads as "closer to camera" — a real thrown die looks bigger at apex.
+    const liftScale = 1 + phys.height / 600;
+    outerTransform = `translate(${phys.x}px, ${phys.y - phys.height}px) scale(${liftScale})`;
+    outerTransition = 'none';
+  } else if (phys.mode === 'landing') {
+    // Impact frame: non-uniform squash (wider + shorter) simulates the die compressing against
+    // the surface. Rendered with transition:none so the squash snaps in like a real hit.
+    outerTransform = `translate(${phys.x}px, ${phys.y}px) scale(1.18, 0.82)`;
     outerTransition = 'none';
   } else if (phys.mode === 'resting') {
-    // Same position as last flying frame — but we pre-warm the spring transition so the
-    // subsequent transform change (→ home) animates smoothly, never snaps.
-    outerTransform = `translate(${phys.x}px, ${phys.y}px)`;
-    outerTransition = 'transform 520ms cubic-bezier(.34,1.26,.64,1)';
+    // Spring back to natural scale with an elastic overshoot — the die bounces back upright.
+    outerTransform = `translate(${phys.x}px, ${phys.y}px) scale(1, 1)`;
+    outerTransition = 'transform 360ms cubic-bezier(.25, 1.7, .35, 1)';
   } else if (phys.mode === 'returning') {
     outerTransform = `translate(0, 0) scale(1)`;
     outerTransition = 'transform 520ms cubic-bezier(.34,1.26,.64,1)';
@@ -1919,10 +1962,13 @@ function Dice({ value, rolling, onClick, disabled }) {
               // STATIC gentle 3/4-view tilt is applied on top so every rolled value lands at the
               // same chunky 3D angle (top + front + side always visible). Mild angles keep the
               // cube looking like a proper cube — not a perspective-distorted rhombus.
-              // VIEW: chunky 3/4 tilt (-45° X, +25° Y) applied on top of the inner cube rotation
-              // that brings the rolled face to front. Empirically tuned to match the iconic
-              // Rolling visual — rolled face dominant with top + left neighbors clearly visible.
-              transform: `translate3d(${currentRot.tx}px, ${currentRot.ty - currentRot.bounce}px, 0) rotateX(-45deg) rotateY(25deg) rotateX(${currentRot.x}deg) rotateY(${currentRot.y}deg)`,
+              // VIEW: iconic 3/4 tilt (-28°X, +28°Y) applied on top of the inner face-to-front
+              // rotation. Strong enough to show three distinct planes (rolled face + top + left
+              // peeking neighbors), combined with the shortened perspective (500px) this produces
+              // a clear trapezoidal silhouette — the cube can never look like a flat rhombus.
+              // Math check: rolled face normal ends at z=0.78 (dominant); top at z=0.47; left at
+              // z=0.41 — the displayed value always reads correctly.
+              transform: `translate3d(${currentRot.tx}px, ${currentRot.ty - currentRot.bounce}px, 0) rotateX(-28deg) rotateY(28deg) rotateX(${currentRot.x}deg) rotateY(${currentRot.y}deg)`,
             }}
           >
             <Face faceVal={1} transform="translateZ(var(--half))"/>
@@ -1938,6 +1984,7 @@ function Dice({ value, rolling, onClick, disabled }) {
           style={{
             transform: `translateX(-50%) scale(${shadowScale})`,
             opacity: shadowOpacity,
+            filter: `blur(${shadowBlur}px)`,
           }}
         />
       </div>
@@ -2012,9 +2059,10 @@ function Dice({ value, rolling, onClick, disabled }) {
         .d3-scene {
           position: absolute;
           inset: 0;
-          /* Moderate perspective (≈6× cube size) — enough depth to read as 3D, not so close
-             that rotations produce perspective-warped rhombus shapes. */
-          perspective: 800px;
+          /* Punchy perspective (≈3.3× cube size) — back corners compress visibly, forcing a
+             true 3D trapezoidal silhouette at every rotation. Any larger value (800+) makes
+             the cube project near-orthographically and read as a flat tilted square. */
+          perspective: 500px;
           perspective-origin: 50% 50%;
           display: flex; align-items: center; justify-content: center;
         }
@@ -2030,21 +2078,38 @@ function Dice({ value, rolling, onClick, disabled }) {
           inset: 0;
           width: var(--size);
           height: var(--size);
-          background:
-            radial-gradient(circle at 30% 25%, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0) 45%),
-            linear-gradient(145deg, #ffffff 0%, #f4ecd8 55%, #d9ccac 100%);
-          border-radius: 18%;
-          /* Multiple inset shadows give the face clear beveled edges so it always reads as a solid
-             3D surface — even under rapid rotation or at oblique angles. */
+          border-radius: 20%;
+          /* Strong beveled edges — dark outer rim + bright inner highlight makes each face
+             read as a distinct plane with a pronounced corner where it meets its neighbor.
+             Critical for 3D read: without this, adjacent faces visible at similar angles
+             blur into one flat surface. */
           box-shadow:
-            inset 0 0 0 1.5px rgba(90,65,30,0.4),
-            inset 0 0 0 3px rgba(255,255,255,0.85),
-            inset 0 -7px 16px rgba(120,95,55,0.38),
-            inset 6px 0 14px rgba(120,95,55,0.22),
-            inset -6px 0 14px rgba(120,95,55,0.22),
-            inset 0 4px 8px rgba(255,255,255,0.95);
+            inset 0 0 0 2px rgba(70,45,15,0.70),
+            inset 0 0 0 4px rgba(255,250,235,0.95),
+            inset 0 -12px 22px rgba(110,75,30,0.55),
+            inset 10px 0 20px rgba(110,75,30,0.32),
+            inset -10px 0 20px rgba(110,75,30,0.32),
+            inset 0 8px 14px rgba(255,252,240,0.95);
           backface-visibility: hidden;
-          padding: 10%;
+          padding: 11%;
+        }
+        /* Face shading by pair — opposite faces share a tint, but the three faces visible at
+           any moment always have three distinct brightnesses. This differential shading is the
+           single biggest 3D cue: without it the cube reads as a flat rounded rhombus. */
+        .d3-face.shade-brighter {
+          background:
+            radial-gradient(ellipse at 28% 22%, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0) 42%),
+            linear-gradient(155deg, #ffffff 0%, #fcf6e4 55%, #ede1bf 100%);
+        }
+        .d3-face.shade-medium {
+          background:
+            radial-gradient(ellipse at 28% 22%, rgba(255,255,255,0.82) 0%, rgba(255,255,255,0) 40%),
+            linear-gradient(155deg, #fcf7e6 0%, #eee1c0 60%, #d4c39a 100%);
+        }
+        .d3-face.shade-darker {
+          background:
+            radial-gradient(ellipse at 28% 22%, rgba(255,255,255,0.65) 0%, rgba(255,255,255,0) 38%),
+            linear-gradient(155deg, #eee1c0 0%, #d9c99f 60%, #b9a578 100%);
         }
         .d3-pips {
           width: 100%;
@@ -2055,14 +2120,16 @@ function Dice({ value, rolling, onClick, disabled }) {
           place-items: center;
         }
         .d3-pip {
-          width: 70%;
+          width: 72%;
           aspect-ratio: 1/1;
           border-radius: 50%;
-          background: radial-gradient(circle at 35% 30%, #54607a 0%, #1a1f2e 60%, #0c0f18 100%);
+          /* Drilled-pip look: dark sphere with subtle blue-grey top highlight so pips read as
+             recessed wells, not painted dots. */
+          background: radial-gradient(circle at 38% 32%, #5a6682 0%, #1c2130 55%, #0a0d17 100%);
           box-shadow:
-            inset 0 -2px 3px rgba(255,255,255,0.15),
-            inset 0 2px 3px rgba(0,0,0,0.5),
-            0 0.5px 1px rgba(255,255,255,0.8);
+            inset 0 -2px 3px rgba(255,255,255,0.14),
+            inset 0 3px 5px rgba(0,0,0,0.6),
+            0 0.5px 1px rgba(255,250,235,0.85);
         }
         .d3-shadow {
           position: absolute;
