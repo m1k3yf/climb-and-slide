@@ -3,3 +3,5 @@
 handoff/
 *-handoff.zip
 node_modules/
+package-lock.json
+

@@ -1,0 +1,25 @@
+{
+  "name": "Climb & Slide",
+  "short_name": "Climb & Slide",
+  "description": "A modern take on a classic dice race. Roll, ride ladders, dodge slides. First to 100 wins.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#1a1f2e",
+  "background_color": "#f4efe6",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='42' fill='%231a1f2e'/%3E%3Ctext x='50%25' y='58%25' text-anchor='middle' font-family='system-ui' font-size='110' font-weight='800' fill='%23e8b23e'%3E%E2%86%91%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%231a1f2e'/%3E%3Ctext x='50%25' y='58%25' text-anchor='middle' font-family='system-ui' font-size='290' font-weight='800' fill='%23e8b23e'%3E%E2%86%91%3C/text%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

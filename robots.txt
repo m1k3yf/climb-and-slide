@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /og.html
+Disallow: /handoff/
+
+Sitemap: https://m1k3yf.github.io/climb-and-slide/sitemap.xml

@@ -1,0 +1,15 @@
+{
+  "name": "climb-and-slide",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A modern take on a classic dice race. Free to play.",
+  "scripts": {
+    "build": "bash build.sh",
+    "dev": "npx serve . -l 8765"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.24.0",
+    "@babel/core": "^7.24.0",
+    "@babel/preset-react": "^7.24.0"
+  }
+}
